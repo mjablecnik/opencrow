@@ -29,8 +29,10 @@ type ToolExecutorInterface interface {
 
 // Message represents a message in the OpenRouter API format
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
 }
 
 // OpenRouterRequest represents the request payload for OpenRouter API
@@ -63,9 +65,8 @@ type OpenRouterResponse struct {
 
 // Choice represents a single choice in the API response
 type Choice struct {
-	Message      Message    `json:"message"`
-	FinishReason string     `json:"finish_reason"`
-	ToolCalls    []ToolCall `json:"tool_calls,omitempty"`
+	Message      Message `json:"message"`
+	FinishReason string  `json:"finish_reason"`
 }
 
 // ToolCall represents a tool execution request from the LLM
@@ -285,6 +286,10 @@ func (c *OpenRouterClient) SendRequest(ctx context.Context, chatID int64, userMe
 	c.logger.DebugWithComponent("OpenRouterClient", "API Response body received", 
 		"bodyLength", len(responseBody))
 	
+	// Log full response body for debugging
+	c.logger.DebugWithComponent("OpenRouterClient", "API Response body content", 
+		"body", string(responseBody))
+	
 	// Check for HTTP errors
 	if resp.StatusCode != http.StatusOK {
 		c.logger.ErrorWithComponent("OpenRouterClient", "API returned error status", 
@@ -307,17 +312,31 @@ func (c *OpenRouterClient) SendRequest(ctx context.Context, chatID int64, userMe
 		return "", fmt.Errorf("API error: %s", apiResponse.Error.Message)
 	}
 	
+	// Debug: Log choices count and structure
+	c.logger.DebugWithComponent("OpenRouterClient", "Checking for tool calls", 
+		"choicesCount", len(apiResponse.Choices))
+	
+	if len(apiResponse.Choices) > 0 {
+		c.logger.DebugWithComponent("OpenRouterClient", "First choice details", 
+			"toolCallsCount", len(apiResponse.Choices[0].Message.ToolCalls),
+			"messageContent", apiResponse.Choices[0].Message.Content)
+	}
+	
 	// Check if LLM requested tool execution
-	if len(apiResponse.Choices) > 0 && len(apiResponse.Choices[0].ToolCalls) > 0 {
+	if len(apiResponse.Choices) > 0 && len(apiResponse.Choices[0].Message.ToolCalls) > 0 {
 		c.logger.InfoWithComponent("OpenRouterClient", "LLM requested tool execution", 
 			"chatID", chatID,
-			"toolCallCount", len(apiResponse.Choices[0].ToolCalls))
+			"toolCallCount", len(apiResponse.Choices[0].Message.ToolCalls))
+		
+		c.logger.DebugWithComponent("OpenRouterClient", "Tool calls details", 
+			"toolCalls", fmt.Sprintf("%+v", apiResponse.Choices[0].Message.ToolCalls))
 		
 		// Handle tool calls and get final response
-		return c.handleToolCalls(ctx, chatID, apiResponse.Choices[0].ToolCalls, messages)
+		return c.handleToolCalls(ctx, chatID, apiResponse.Choices[0].Message.ToolCalls, messages)
 	}
 	
 	// Extract generated text (no tool calls)
+	c.logger.DebugWithComponent("OpenRouterClient", "No tool calls, extracting text content")
 	generatedText, err := c.extractGeneratedText(apiResponse)
 	if err != nil {
 		return "", err
@@ -483,8 +502,9 @@ func (c *OpenRouterClient) handleToolCalls(ctx context.Context, chatID int64, to
 
 		// Add tool result as a message
 		toolMessages = append(toolMessages, Message{
-			Role:    "tool",
-			Content: resultContent,
+			Role:       "tool",
+			Content:    resultContent,
+			ToolCallID: toolCall.ID,
 		})
 	}
 
@@ -508,6 +528,9 @@ func (c *OpenRouterClient) handleToolCalls(ctx context.Context, chatID int64, to
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal follow-up request: %w", err)
 	}
+
+	c.logger.DebugWithComponent("OpenRouterClient", "Follow-up request body", 
+		"body", string(requestBody))
 
 	req, err := http.NewRequestWithContext(ctx, "POST", openRouterAPIURL, bytes.NewBuffer(requestBody))
 	if err != nil {
@@ -537,7 +560,8 @@ func (c *OpenRouterClient) handleToolCalls(ctx context.Context, chatID int64, to
 	// Check for HTTP errors
 	if resp.StatusCode != http.StatusOK {
 		c.logger.ErrorWithComponent("OpenRouterClient", "Follow-up API returned error status", 
-			"statusCode", resp.StatusCode)
+			"statusCode", resp.StatusCode,
+			"body", string(responseBody))
 		return "", c.handleHTTPError(resp.StatusCode, responseBody)
 	}
 
