@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: simple-telegram-chatbot
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - MODEL_NAME=${MODEL_NAME:-google/gemini-2.5-flash-lite}
+      - SHELL_TIMEOUT=${SHELL_TIMEOUT:-30s}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - ./agent:/app/agent:ro
+      - ./logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
