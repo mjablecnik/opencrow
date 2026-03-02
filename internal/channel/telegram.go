@@ -127,9 +127,18 @@ func (tc *TelegramChannel) HandleMessage(update tgbotapi.Update) error {
 // SendMessage sends a basic message to a user
 func (tc *TelegramChannel) SendMessage(chatID int64, text string) error {
 	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "HTML"
 	_, err := tc.bot.Send(msg)
 	if err != nil {
-		return fmt.Errorf("failed to send message: %w", err)
+		// If HTML parsing fails, try sending as plain text
+		tc.logger.WarnWithComponent("TelegramChannel", "HTML parsing failed, sending as plain text", "error", err)
+		plainMsg := tgbotapi.NewMessage(chatID, text)
+		plainMsg.ParseMode = ""
+		_, plainErr := tc.bot.Send(plainMsg)
+		if plainErr != nil {
+			return fmt.Errorf("failed to send message (both HTML and plain): %w", plainErr)
+		}
+		return nil
 	}
 	return nil
 }
