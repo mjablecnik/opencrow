@@ -3,8 +3,6 @@ package channel
 import (
 	"context"
 	"fmt"
-	"regexp"
-	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -150,104 +148,15 @@ func (tc *TelegramChannel) HandleMessage(update tgbotapi.Update) error {
 
 // SendMessage sends a basic message to a user
 func (tc *TelegramChannel) SendMessage(chatID int64, text string) error {
-	// Convert Markdown to HTML for Telegram
-	htmlText := tc.markdownToHTML(text)
-	
-	msg := tgbotapi.NewMessage(chatID, htmlText)
-	msg.ParseMode = "HTML"
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "" // No parsing, plain text only
 	_, err := tc.bot.Send(msg)
 	if err != nil {
-		// If HTML parsing fails, try sending as plain text
-		tc.logger.WarnWithComponent("TelegramChannel", "HTML parsing failed, sending as plain text", "error", err)
-		plainMsg := tgbotapi.NewMessage(chatID, text)
-		plainMsg.ParseMode = ""
-		_, plainErr := tc.bot.Send(plainMsg)
-		if plainErr != nil {
-			return fmt.Errorf("failed to send message (both HTML and plain): %w", plainErr)
-		}
-		return nil
+		return fmt.Errorf("failed to send message: %w", err)
 	}
 	return nil
 }
 
-// markdownToHTML converts Markdown formatting to Telegram HTML
-func (tc *TelegramChannel) markdownToHTML(text string) string {
-	// Convert bold: **text** or __text__ -> <b>text</b>
-	boldPattern := regexp.MustCompile(`\*\*(.+?)\*\*|__(.+?)__`)
-	text = boldPattern.ReplaceAllStringFunc(text, func(match string) string {
-		content := strings.Trim(match, "*_")
-		// Escape HTML in content
-		content = strings.ReplaceAll(content, "&", "&amp;")
-		content = strings.ReplaceAll(content, "<", "&lt;")
-		content = strings.ReplaceAll(content, ">", "&gt;")
-		return "<b>" + content + "</b>"
-	})
-	
-	// Convert italic: *text* or _text_ -> <i>text</i>
-	italicAsteriskPattern := regexp.MustCompile(`\*([^*]+?)\*`)
-	text = italicAsteriskPattern.ReplaceAllStringFunc(text, func(match string) string {
-		content := strings.Trim(match, "*")
-		// Escape HTML in content
-		content = strings.ReplaceAll(content, "&", "&amp;")
-		content = strings.ReplaceAll(content, "<", "&lt;")
-		content = strings.ReplaceAll(content, ">", "&gt;")
-		return "<i>" + content + "</i>"
-	})
-	
-	italicUnderscorePattern := regexp.MustCompile(`_([^_]+?)_`)
-	text = italicUnderscorePattern.ReplaceAllStringFunc(text, func(match string) string {
-		content := strings.Trim(match, "_")
-		// Escape HTML in content
-		content = strings.ReplaceAll(content, "&", "&amp;")
-		content = strings.ReplaceAll(content, "<", "&lt;")
-		content = strings.ReplaceAll(content, ">", "&gt;")
-		return "<i>" + content + "</i>"
-	})
-	
-	// Convert code: `text` -> <code>text</code>
-	codePattern := regexp.MustCompile("`([^`]+)`")
-	text = codePattern.ReplaceAllStringFunc(text, func(match string) string {
-		content := strings.Trim(match, "`")
-		// Escape HTML in code content
-		content = strings.ReplaceAll(content, "&", "&amp;")
-		content = strings.ReplaceAll(content, "<", "&lt;")
-		content = strings.ReplaceAll(content, ">", "&gt;")
-		return "<code>" + content + "</code>"
-	})
-	
-	// Convert code blocks: ```text``` -> <pre>text</pre>
-	codeBlockPattern := regexp.MustCompile("```(?:[a-z]*\n)?([^`]+)```")
-	text = codeBlockPattern.ReplaceAllStringFunc(text, func(match string) string {
-		content := regexp.MustCompile("```(?:[a-z]*\n)?([^`]+)```").FindStringSubmatch(match)
-		if len(content) > 1 {
-			// Escape HTML in code block content
-			blockContent := content[1]
-			blockContent = strings.ReplaceAll(blockContent, "&", "&amp;")
-			blockContent = strings.ReplaceAll(blockContent, "<", "&lt;")
-			blockContent = strings.ReplaceAll(blockContent, ">", "&gt;")
-			return "<pre>" + blockContent + "</pre>"
-		}
-		return match
-	})
-	
-	// Convert links: [text](url) -> <a href="url">text</a>
-	linkPattern := regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
-	text = linkPattern.ReplaceAllStringFunc(text, func(match string) string {
-		parts := linkPattern.FindStringSubmatch(match)
-		if len(parts) == 3 {
-			linkText := parts[1]
-			url := parts[2]
-			// Escape HTML in link text
-			linkText = strings.ReplaceAll(linkText, "&", "&amp;")
-			linkText = strings.ReplaceAll(linkText, "<", "&lt;")
-			linkText = strings.ReplaceAll(linkText, ">", "&gt;")
-			return `<a href="` + url + `">` + linkText + `</a>`
-		}
-		return match
-	})
-	
-	return text
-}
 
 // SendMessageWithRetry implements exponential backoff retry logic (3 attempts)
 func (tc *TelegramChannel) SendMessageWithRetry(chatID int64, text string, maxRetries int) error {
