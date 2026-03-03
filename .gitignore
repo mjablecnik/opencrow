@@ -25,6 +25,13 @@ go.work
 logs/
 *.log
 
+# Memory system data
+memory/
+
+# Configuration with sensitive data
+config/cron.json
+config/cron_history.json
+
 # IDE
 .vscode/
 .idea/
