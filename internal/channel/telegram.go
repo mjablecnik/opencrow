@@ -7,18 +7,20 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"simple-telegram-chatbot/internal/llm"
+	"simple-telegram-chatbot/internal/memory"
 	"simple-telegram-chatbot/internal/session"
 	"simple-telegram-chatbot/pkg/utils"
 )
 
 // TelegramChannel handles Telegram bot communication
 type TelegramChannel struct {
-	bot            *tgbotapi.BotAPI
-	llmClient      *llm.OpenRouterClient
-	sessionManager *session.SessionManager
-	logger         *utils.Logger
-	updatesChan    tgbotapi.UpdatesChannel
-	stopChan       chan struct{}
+	bot                  *tgbotapi.BotAPI
+	llmClient            *llm.OpenRouterClient
+	sessionManager       *session.SessionManager
+	memorySessionManager *memory.SessionManager
+	logger               *utils.Logger
+	updatesChan          tgbotapi.UpdatesChannel
+	stopChan             chan struct{}
 }
 
 // NewTelegramChannel creates a new Telegram channel instance
@@ -26,6 +28,7 @@ func NewTelegramChannel(
 	botToken string,
 	llmClient *llm.OpenRouterClient,
 	sessionManager *session.SessionManager,
+	memorySessionManager *memory.SessionManager,
 	logger *utils.Logger,
 ) (*TelegramChannel, error) {
 	bot, err := tgbotapi.NewBotAPI(botToken)
@@ -36,11 +39,12 @@ func NewTelegramChannel(
 	logger.InfoWithComponent("TelegramChannel", "Authorized on account", "username", bot.Self.UserName)
 
 	return &TelegramChannel{
-		bot:            bot,
-		llmClient:      llmClient,
-		sessionManager: sessionManager,
-		logger:         logger,
-		stopChan:       make(chan struct{}),
+		bot:                  bot,
+		llmClient:            llmClient,
+		sessionManager:       sessionManager,
+		memorySessionManager: memorySessionManager,
+		logger:               logger,
+		stopChan:             make(chan struct{}),
 	}, nil
 }
 
@@ -91,6 +95,12 @@ func (tc *TelegramChannel) HandleMessage(update tgbotapi.Update) error {
 
 	tc.logger.InfoWithComponent("TelegramChannel", "Received message", "chatID", chatID, "message", userMessage)
 
+	// Log user message to memory session log
+	if err := tc.memorySessionManager.AppendToSessionLog("User", userMessage); err != nil {
+		tc.logger.WarnWithComponent("TelegramChannel", "Failed to log user message to memory", "error", err)
+		// Continue processing even if logging fails
+	}
+
 	// Store user message in session
 	if err := tc.sessionManager.AppendMessage(chatID, "user", userMessage); err != nil {
 		tc.logger.ErrorWithComponent("TelegramChannel", "Failed to append user message", "error", err)
@@ -113,6 +123,12 @@ func (tc *TelegramChannel) HandleMessage(update tgbotapi.Update) error {
 	if err := tc.sessionManager.AppendMessage(chatID, "assistant", response); err != nil {
 		tc.logger.ErrorWithComponent("TelegramChannel", "Failed to append assistant message", "error", err)
 		return fmt.Errorf("failed to append assistant message: %w", err)
+	}
+
+	// Log assistant response to memory session log
+	if err := tc.memorySessionManager.AppendToSessionLog("Assistant", response); err != nil {
+		tc.logger.WarnWithComponent("TelegramChannel", "Failed to log assistant message to memory", "error", err)
+		// Continue processing even if logging fails
 	}
 
 	// Send response to user with retry logic

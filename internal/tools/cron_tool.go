@@ -841,3 +841,54 @@ func (t *CronManagementTool) GetExecutionHistory(name string, limit int) *CronTo
 		Data:    historyList,
 	}
 }
+
+// Name returns the tool name for registration
+func (t *CronManagementTool) Name() string {
+	return "cron_management"
+}
+
+// Description returns the tool description for LLM
+func (t *CronManagementTool) Description() string {
+	return "Manage cron jobs for scheduled tasks and reminders. Supports adding, removing, enabling, disabling, and listing jobs. Can create recurring reminders with cron expressions or one-time reminders with specific timestamps."
+}
+
+// Execute implements the Tool interface for generic tool execution
+func (t *CronManagementTool) Execute(params map[string]interface{}) (ToolResult, error) {
+	action, ok := params["action"].(string)
+	if !ok {
+		return ToolResult{
+			Success: false,
+			Error:   "missing or invalid 'action' parameter",
+		}, fmt.Errorf("missing or invalid 'action' parameter")
+	}
+
+	switch action {
+	case "list":
+		return t.ListJobs().toToolResult(), nil
+	case "get":
+		name, ok := params["name"].(string)
+		if !ok {
+			return ToolResult{Success: false, Error: "missing 'name' parameter"}, fmt.Errorf("missing 'name' parameter")
+		}
+		return t.GetJobInfo(name).toToolResult(), nil
+	case "add":
+		name, _ := params["name"].(string)
+		schedule, _ := params["schedule"].(string)
+		taskType, _ := params["task_type"].(string)
+		return t.AddJob(name, schedule, taskType).toToolResult(), nil
+	case "remove":
+		name, _ := params["name"].(string)
+		return t.RemoveJob(name).toToolResult(), nil
+	case "enable":
+		name, _ := params["name"].(string)
+		return t.EnableJob(name).toToolResult(), nil
+	case "disable":
+		name, _ := params["name"].(string)
+		return t.DisableJob(name).toToolResult(), nil
+	default:
+		return ToolResult{
+			Success: false,
+			Error:   fmt.Sprintf("unknown action: %s", action),
+		}, fmt.Errorf("unknown action: %s", action)
+	}
+}

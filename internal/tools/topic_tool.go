@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"simple-telegram-chatbot/internal/memory"
 )
 
 // TopicKnowledgeTool provides LLM-friendly methods for accessing and writing topic knowledge
 type TopicKnowledgeTool struct {
-	// TODO: Add Memory Manager reference when implemented (task 16)
-	// memoryManager *memory.Manager
+	topicManager *memory.TopicManager
 }
 
 // TopicToolResult represents the result of a topic tool operation with structured data
@@ -70,9 +71,9 @@ func (r *TopicToolResult) toToolResult() ToolResult {
 }
 
 // NewTopicKnowledgeTool creates a new TopicKnowledgeTool instance
-func NewTopicKnowledgeTool() *TopicKnowledgeTool {
+func NewTopicKnowledgeTool(topicManager *memory.TopicManager) *TopicKnowledgeTool {
 	return &TopicKnowledgeTool{
-		// TODO: Initialize with Memory Manager reference
+		topicManager: topicManager,
 	}
 }
 

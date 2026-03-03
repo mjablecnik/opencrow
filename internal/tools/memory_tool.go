@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"simple-telegram-chatbot/internal/memory"
 )
 
 // MemorySummaryTool provides LLM-friendly methods for retrieving memory summaries
 type MemorySummaryTool struct {
-	// TODO: Add Memory Manager reference when implemented (task 16)
-	// memoryManager *memory.Manager
+	summaryManager *memory.SummaryManager
 }
 
 // MemoryToolResult represents the result of a memory tool operation with structured data
@@ -53,9 +54,9 @@ func (r *MemoryToolResult) toToolResult() ToolResult {
 }
 
 // NewMemorySummaryTool creates a new MemorySummaryTool instance
-func NewMemorySummaryTool() *MemorySummaryTool {
+func NewMemorySummaryTool(summaryManager *memory.SummaryManager) *MemorySummaryTool {
 	return &MemorySummaryTool{
-		// TODO: Initialize with Memory Manager reference
+		summaryManager: summaryManager,
 	}
 }
 

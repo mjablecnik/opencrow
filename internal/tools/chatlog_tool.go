@@ -8,8 +8,7 @@ import (
 
 // ChatLogSearchTool provides LLM-friendly methods for searching raw chat logs
 type ChatLogSearchTool struct {
-	// TODO: Add Memory Manager reference when implemented (task 16)
-	// memoryManager *memory.Manager
+	memoryBasePath string
 }
 
 // ChatLogToolResult represents the result of a chat log tool operation with structured data
@@ -54,9 +53,9 @@ func (r *ChatLogToolResult) toToolResult() ToolResult {
 }
 
 // NewChatLogSearchTool creates a new ChatLogSearchTool instance
-func NewChatLogSearchTool() *ChatLogSearchTool {
+func NewChatLogSearchTool(memoryBasePath string) *ChatLogSearchTool {
 	return &ChatLogSearchTool{
-		// TODO: Initialize with Memory Manager reference
+		memoryBasePath: memoryBasePath,
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"simple-telegram-chatbot/internal/agent"
+	"simple-telegram-chatbot/internal/memory"
 	"simple-telegram-chatbot/internal/session"
 	"simple-telegram-chatbot/internal/tools"
 	"simple-telegram-chatbot/pkg/utils"
@@ -106,6 +107,7 @@ type OpenRouterClient struct {
 	toolExecutor   ToolExecutorInterface
 	httpClient     *http.Client
 	logger         *utils.Logger
+	contextManager *memory.ContextManager // Memory context manager
 }
 
 // NewOpenRouterClient creates a new OpenRouter client instance
@@ -126,8 +128,14 @@ func NewOpenRouterClient(
 		httpClient: &http.Client{
 			Timeout: requestTimeout,
 		},
-		logger: logger,
+		logger:         logger,
+		contextManager: nil, // Will be set via SetContextManager
 	}
+}
+
+// SetContextManager sets the memory context manager
+func (c *OpenRouterClient) SetContextManager(contextManager *memory.ContextManager) {
+	c.contextManager = contextManager
 }
 
 // LoadIdentityFiles loads identity files from the agent component
@@ -600,7 +608,7 @@ func (c *OpenRouterClient) handleToolCalls(ctx context.Context, chatID int64, to
 // ExtractTopics extracts domain-specific topics from conversation content using LLM
 // Returns a list of TopicExtraction with ShouldWrite=true if relevant domain knowledge is found
 // Retries up to 3 times with exponential backoff on failures
-func (c *OpenRouterClient) ExtractTopics(content string, existingTopics []string) ([]TopicExtraction, error) {
+func (c *OpenRouterClient) ExtractTopics(content string, existingTopics []string) ([]memory.TopicExtraction, error) {
 	c.logger.InfoWithComponent("OpenRouterClient", "Extracting topics from content",
 		"contentLength", len(content),
 		"existingTopicsCount", len(existingTopics))
@@ -745,7 +753,7 @@ func (c *OpenRouterClient) ExtractTopics(content string, existingTopics []string
 		"lastError", lastErr)
 
 	// Return empty list instead of error to allow graceful degradation
-	return []TopicExtraction{}, nil
+	return []memory.TopicExtraction{}, nil
 }
 
 // buildTopicExtractionPrompt creates the prompt for topic extraction
@@ -791,11 +799,11 @@ func (c *OpenRouterClient) buildTopicExtractionPrompt(content string, existingTo
 }
 
 // parseTopicExtractionResponse parses the LLM response and extracts topics
-func (c *OpenRouterClient) parseTopicExtractionResponse(response string) ([]TopicExtraction, error) {
+func (c *OpenRouterClient) parseTopicExtractionResponse(response string) ([]memory.TopicExtraction, error) {
 	// Check if no topics were found
 	if strings.Contains(strings.ToUpper(response), "NO_TOPICS_FOUND") {
 		c.logger.InfoWithComponent("OpenRouterClient", "No relevant domain knowledge found in content")
-		return []TopicExtraction{}, nil
+		return []memory.TopicExtraction{}, nil
 	}
 
 	// Try to extract JSON from the response
@@ -804,7 +812,7 @@ func (c *OpenRouterClient) parseTopicExtractionResponse(response string) ([]Topi
 	if jsonStr == "" {
 		c.logger.WarnWithComponent("OpenRouterClient", "No JSON found in topic extraction response",
 			"response", response)
-		return []TopicExtraction{}, nil
+		return []memory.TopicExtraction{}, nil
 	}
 
 	// Parse JSON array
@@ -823,9 +831,9 @@ func (c *OpenRouterClient) parseTopicExtractionResponse(response string) ([]Topi
 	}
 
 	// Convert to TopicExtraction structs
-	topics := make([]TopicExtraction, 0, len(rawTopics))
+	topics := make([]memory.TopicExtraction, 0, len(rawTopics))
 	for _, raw := range rawTopics {
-		topics = append(topics, TopicExtraction{
+		topics = append(topics, memory.TopicExtraction{
 			TopicName:   raw.TopicName,
 			Content:     raw.Content,
 			Confidence:  raw.Confidence,
@@ -891,3 +899,99 @@ type TopicExtraction struct {
 	ShouldWrite bool
 }
 
+
+// GenerateSummary generates a summary of the given content using the LLM
+// summaryType can be "daily", "weekly", "quarterly", "session", or "token_based"
+func (c *OpenRouterClient) GenerateSummary(content string, summaryType string) (string, error) {
+	c.logger.InfoWithComponent("OpenRouterClient", "Generating summary",
+		"summaryType", summaryType,
+		"contentLength", len(content))
+
+	// Build the prompt for summarization
+	prompt := fmt.Sprintf(`You are tasked with creating a %s summary of conversation history.
+
+Please analyze the following content and create a comprehensive summary that:
+1. Captures key topics and themes discussed
+2. Highlights important decisions or action items
+3. Notes any significant insights or learnings
+4. Maintains context for future reference
+
+Content to summarize:
+%s
+
+Please provide a well-structured summary in markdown format.`, summaryType, content)
+
+	// Create messages for the request
+	messages := []Message{
+		{
+			Role:    "system",
+			Content: "You are a helpful assistant that creates concise and informative summaries of conversations.",
+		},
+		{
+			Role:    "user",
+			Content: prompt,
+		},
+	}
+
+	// Build request payload
+	requestPayload := OpenRouterRequest{
+		Model:    c.modelName,
+		Messages: messages,
+	}
+
+	// Marshal request to JSON
+	requestBody, err := json.Marshal(requestPayload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Create HTTP request
+	req, err := http.NewRequest("POST", openRouterAPIURL, bytes.NewBuffer(requestBody))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	// Send request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Check for HTTP errors
+	if resp.StatusCode != http.StatusOK {
+		return "", c.handleHTTPError(resp.StatusCode, body)
+	}
+
+	// Parse response
+	var apiResponse OpenRouterResponse
+	if err := json.Unmarshal(body, &apiResponse); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// Check for API errors
+	if apiResponse.Error != nil {
+		return "", fmt.Errorf("API error: %s", apiResponse.Error.Message)
+	}
+
+	// Extract summary text
+	summary, err := c.extractGeneratedText(apiResponse)
+	if err != nil {
+		return "", fmt.Errorf("failed to extract summary: %w", err)
+	}
+
+	c.logger.InfoWithComponent("OpenRouterClient", "Summary generated successfully",
+		"summaryType", summaryType,
+		"summaryLength", len(summary))
+
+	return summary, nil
+}

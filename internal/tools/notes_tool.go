@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"simple-telegram-chatbot/internal/memory"
 )
 
 // NotesManagementTool provides LLM-friendly methods for managing agent notes
 type NotesManagementTool struct {
-	// TODO: Add Memory Manager reference when implemented (task 16)
-	// memoryManager *memory.Manager
+	notesManager *memory.NotesManager
 }
 
 // NotesToolResult represents the result of a notes tool operation with structured data
@@ -56,9 +57,9 @@ func (r *NotesToolResult) toToolResult() ToolResult {
 }
 
 // NewNotesManagementTool creates a new NotesManagementTool instance
-func NewNotesManagementTool() *NotesManagementTool {
+func NewNotesManagementTool(notesManager *memory.NotesManager) *NotesManagementTool {
 	return &NotesManagementTool{
-		// TODO: Initialize with Memory Manager reference
+		notesManager: notesManager,
 	}
 }
 
