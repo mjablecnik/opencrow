@@ -564,8 +564,8 @@ func (nm *NotesManager) updateNotesIndexInternal() error {
 // isNoteReferencedInternal checks if a note is referenced in MEMORY.md or topic files
 // Must be called with lock held
 func (nm *NotesManager) isNoteReferencedInternal(noteName string) bool {
-	// Check MEMORY.md
-	memoryPath := filepath.Join(nm.memoryBasePath, "..", "agent", "MEMORY.md")
+	// Check MEMORY.md (now in memory/ directory)
+	memoryPath := filepath.Join(nm.memoryBasePath, "MEMORY.md")
 	if content, err := os.ReadFile(memoryPath); err == nil {
 		if strings.Contains(string(content), noteName) {
 			return true

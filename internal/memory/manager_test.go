@@ -49,13 +49,6 @@ func TestInitializeDirectories(t *testing.T) {
 	tmpDir := t.TempDir()
 	logger := utils.NewLogger("info")
 
-	// Create a temporary agent directory for MEMORY.md
-	agentDir := filepath.Join(filepath.Dir(tmpDir), "agent")
-	if err := os.MkdirAll(agentDir, 0755); err != nil {
-		t.Fatalf("Failed to create agent directory: %v", err)
-	}
-	defer os.RemoveAll(agentDir)
-
 	sessionManager := NewSessionManager(tmpDir)
 	summaryManager := NewSummaryManager(tmpDir, sessionManager, 50000, nil, nil)
 	topicManager := NewTopicManager(tmpDir, 100*1024)
@@ -100,8 +93,8 @@ func TestInitializeDirectories(t *testing.T) {
 		}
 	}
 
-	// Verify MEMORY.md was created
-	memoryMdPath := filepath.Join(agentDir, "MEMORY.md")
+	// Verify MEMORY.md was created (now in memory/ directory)
+	memoryMdPath := filepath.Join(tmpDir, "MEMORY.md")
 	if _, err := os.Stat(memoryMdPath); os.IsNotExist(err) {
 		t.Error("MEMORY.md was not created")
 	}
@@ -160,13 +153,6 @@ func TestInitializeDirectories_Idempotent(t *testing.T) {
 	tmpDir := t.TempDir()
 	logger := utils.NewLogger("info")
 
-	// Create a temporary agent directory for MEMORY.md
-	agentDir := filepath.Join(filepath.Dir(tmpDir), "agent")
-	if err := os.MkdirAll(agentDir, 0755); err != nil {
-		t.Fatalf("Failed to create agent directory: %v", err)
-	}
-	defer os.RemoveAll(agentDir)
-
 	sessionManager := NewSessionManager(tmpDir)
 	summaryManager := NewSummaryManager(tmpDir, sessionManager, 50000, nil, nil)
 	topicManager := NewTopicManager(tmpDir, 100*1024)
@@ -179,8 +165,8 @@ func TestInitializeDirectories_Idempotent(t *testing.T) {
 		t.Fatalf("First InitializeDirectories failed: %v", err)
 	}
 
-	// Modify MEMORY.md to verify it's not overwritten
-	memoryMdPath := filepath.Join(agentDir, "MEMORY.md")
+	// Modify MEMORY.md to verify it's not overwritten (now in memory/ directory)
+	memoryMdPath := filepath.Join(tmpDir, "MEMORY.md")
 	customContent := "# Custom Memory Content\n\nThis should not be overwritten."
 	if err := os.WriteFile(memoryMdPath, []byte(customContent), 0644); err != nil {
 		t.Fatalf("Failed to write custom MEMORY.md: %v", err)

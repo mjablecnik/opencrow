@@ -79,8 +79,8 @@ func (mm *MemoryManager) InitializeDirectories() error {
 		}
 	}
 
-	// Create MEMORY.md if it doesn't exist
-	memoryMdPath := filepath.Join(filepath.Dir(mm.memoryBasePath), "agent", "MEMORY.md")
+	// Create MEMORY.md if it doesn't exist (in memory/ directory, not agent/)
+	memoryMdPath := filepath.Join(mm.memoryBasePath, "MEMORY.md")
 	if err := mm.ensureMemoryMd(memoryMdPath); err != nil {
 		return fmt.Errorf("failed to create MEMORY.md: %w", err)
 	}
