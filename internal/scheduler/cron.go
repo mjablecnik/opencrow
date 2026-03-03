@@ -599,7 +599,7 @@ func (s *CronScheduler) executeSessionReset() error {
 	
 	// Step 1: Send maintenance message to Telegram (if configured)
 	if s.telegramSender != nil && s.maintenanceChatID != 0 {
-		maintenanceMsg := "🔧 <b>Probíhá denní údržba...</b>\n\nGeneruji souhrn včerejšího dne a resetuji session. Chvilku to potrvá."
+		maintenanceMsg := "🔧 Probíhá denní údržba...\n\nGeneruji souhrn včerejšího dne a resetuji session. Chvilku to potrvá."
 		if err := s.telegramSender.SendMessage(s.maintenanceChatID, maintenanceMsg); err != nil {
 			s.logger.Printf("Warning: Failed to send maintenance message: %v", err)
 			// Continue anyway - this is not critical
@@ -660,7 +660,7 @@ func (s *CronScheduler) executeSessionReset() error {
 	
 	// Step 5: Send completion message to Telegram (if configured)
 	if s.telegramSender != nil && s.maintenanceChatID != 0 {
-		completionMsg := "✅ <b>Denní údržba dokončena!</b>\n\nSession byla resetována a jsem připraven na nový den."
+		completionMsg := "✅ Denní údržba dokončena!\n\nSession byla resetována a jsem připraven na nový den."
 		if err := s.telegramSender.SendMessage(s.maintenanceChatID, completionMsg); err != nil {
 			s.logger.Printf("Warning: Failed to send completion message: %v", err)
 			// Continue anyway - this is not critical

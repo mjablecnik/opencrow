@@ -826,19 +826,19 @@ func (c *OpenRouterClient) sendToolActivationNotification(chatID int64, toolName
 	var message string
 	switch toolName {
 	case "notes_management":
-		message = "🗒️ <i>Saving note...</i>"
+		message = "🗒️ Saving note..."
 	case "cron_management":
-		message = "⏰ <i>Setting reminder...</i>"
+		message = "⏰ Setting reminder..."
 	case "shell_tool":
-		message = "⚙️ <i>Running command...</i>"
+		message = "⚙️ Running command..."
 	case "memory_summary":
-		message = "📚 <i>Searching memory...</i>"
+		message = "📚 Searching memory..."
 	case "topic_knowledge":
-		message = "💡 <i>Saving knowledge...</i>"
+		message = "💡 Saving knowledge..."
 	case "chatlog_search":
-		message = "🔍 <i>Searching history...</i>"
+		message = "🔍 Searching history..."
 	default:
-		message = fmt.Sprintf("🔧 <i>Activating tool: %s...</i>", toolName)
+		message = fmt.Sprintf("🔧 Activating tool: %s...", toolName)
 	}
 
 	// Send notification (non-blocking, ignore errors)

@@ -220,7 +220,7 @@ func (tc *TelegramChannel) handleResetCommand(chatID int64) error {
 	}
 
 	// Step 3: Send confirmation to user
-	confirmMsg := "<b>History has been reset.</b> How can I help you today?"
+	confirmMsg := "History has been reset. How can I help you today?"
 	if err := tc.SendMessageWithRetry(chatID, confirmMsg, 3); err != nil {
 		tc.logger.ErrorWithComponent("TelegramChannel", "Failed to send reset confirmation", "error", err)
 		return fmt.Errorf("failed to send reset confirmation: %w", err)
