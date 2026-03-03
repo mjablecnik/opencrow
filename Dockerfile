@@ -40,21 +40,28 @@ WORKDIR /app
 COPY --from=builder /build/bot /app/bot
 
 # Create directories for volumes
-RUN mkdir -p /app/agent /app/logs && \
+RUN mkdir -p /app/agent /app/logs /app/memory /app/config && \
     chown -R botuser:botuser /app
 
 # Switch to non-root user
 USER botuser
 
 # Define volume mount points
-VOLUME ["/app/agent", "/app/logs"]
+VOLUME ["/app/agent", "/app/logs", "/app/memory", "/app/config"]
 
 # Environment variables (configurable at runtime)
 ENV TELEGRAM_BOT_TOKEN="" \
     OPENROUTER_API_KEY="" \
     MODEL_NAME="google/gemini-2.5-flash-lite" \
     SHELL_TIMEOUT="30s" \
-    LOG_LEVEL="info"
+    LOG_LEVEL="info" \
+    MEMORY_TOKEN_THRESHOLD="50000" \
+    TOPIC_SIZE_THRESHOLD="102400" \
+    NOTES_CLEANUP_ENABLED="true" \
+    NOTES_MAX_AGE_DAYS="30" \
+    NOTES_COMPLETED_RETENTION_DAYS="7" \
+    NOTES_SCRATCHPAD_MAX_AGE_DAYS="7" \
+    DAILY_MAINTENANCE_TIME="0 4 * * *"
 
 # Expose no ports (bot uses polling, not webhooks)
 
