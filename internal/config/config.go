@@ -26,6 +26,7 @@ type Config struct {
 type MemoryConfig struct {
 	TokenThreshold              int
 	TopicSizeThreshold          int64
+	NotesEnabled                bool
 	NotesCleanupEnabled         bool
 	NotesMaxAgeDays             int
 	NotesCompletedRetentionDays int
@@ -95,6 +96,18 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("invalid TOPIC_SIZE_THRESHOLD value: %v", err)
 		}
 		cfg.Memory.TopicSizeThreshold = topicSizeThreshold
+	}
+
+	// Memory configuration: Notes enabled (default: true)
+	notesEnabledStr := os.Getenv("NOTES_ENABLED")
+	if notesEnabledStr == "" {
+		cfg.Memory.NotesEnabled = true
+	} else {
+		notesEnabled, err := strconv.ParseBool(notesEnabledStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid NOTES_ENABLED value: %v", err)
+		}
+		cfg.Memory.NotesEnabled = notesEnabled
 	}
 
 	// Memory configuration: Notes cleanup enabled (default: true)
