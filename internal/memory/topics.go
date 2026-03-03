@@ -138,8 +138,8 @@ func (tm *TopicManager) CreateTopicFile(topicName, content string) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	// First, check if a similar topic already exists
-	existingTopic, err := tm.findSimilarTopic(topicName)
+	// First, check if a similar topic already exists (using internal method without locking)
+	existingTopic, err := tm.findSimilarTopicInternal(topicName)
 	if err == nil && existingTopic != "" {
 		tm.logger.InfoWithComponent("TopicManager", "Similar topic found, updating instead of creating",
 			"requested_topic", topicName,
@@ -176,7 +176,7 @@ func (tm *TopicManager) CreateTopicFile(topicName, content string) error {
 	)
 
 	// Check if MEMORY.md topic needs to be moved to separate file
-	if err := tm.checkAndMoveToSeparateFile(topicName); err != nil {
+	if err := tm.checkAndMoveToSeparateFileInternal(topicName); err != nil {
 		tm.logger.WarnWithComponent("TopicManager", "Failed to check if topic should be moved to separate file",
 			"topic_name", topicName,
 			"error", err.Error(),
@@ -241,8 +241,8 @@ func (tm *TopicManager) updateTopicFileInternal(topicName, content string) error
 			"size", len(content),
 		)
 
-		// Check if it should be moved to a separate file
-		if err := tm.checkAndMoveToSeparateFile(topicName); err != nil {
+		// Check if it should be moved to a separate file (use internal version)
+		if err := tm.checkAndMoveToSeparateFileInternal(topicName); err != nil {
 			tm.logger.WarnWithComponent("TopicManager", "Failed to check if topic should be moved to separate file",
 				"topic_name", topicName,
 				"error", err.Error(),
@@ -283,8 +283,8 @@ func (tm *TopicManager) updateTopicFileInternal(topicName, content string) error
 		"size", len(formattedContent),
 	)
 
-	// Update MEMORY.md index
-	topics, _ := tm.ListTopics()
+	// Update MEMORY.md index (use internal version)
+	topics, _ := tm.listTopicsInternal()
 	tm.memoryIndexManager.UpdateMemoryIndex(topics)
 
 	return nil
@@ -386,6 +386,11 @@ func (tm *TopicManager) ListTopics() ([]TopicInfo, error) {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 
+	return tm.listTopicsInternal()
+}
+
+// listTopicsInternal is the internal version without locking
+func (tm *TopicManager) listTopicsInternal() ([]TopicInfo, error) {
 	topicsDir := filepath.Join(tm.memoryBasePath, "topics")
 
 	// Check if topics directory exists
@@ -705,12 +710,27 @@ func (tm *TopicManager) findSimilarTopic(topicName string) (string, error) {
 		return "", err
 	}
 
+	return tm.findSimilarTopicInList(topicName, topics), nil
+}
+
+// findSimilarTopicInternal is the internal version without locking
+func (tm *TopicManager) findSimilarTopicInternal(topicName string) (string, error) {
+	topics, err := tm.listTopicsInternal()
+	if err != nil {
+		return "", err
+	}
+
+	return tm.findSimilarTopicInList(topicName, topics), nil
+}
+
+// findSimilarTopicInList checks for similar topics in the provided list
+func (tm *TopicManager) findSimilarTopicInList(topicName string, topics []TopicInfo) string {
 	topicNameLower := strings.ToLower(topicName)
 	
 	// Check for exact match (case-insensitive)
 	for _, topic := range topics {
 		if strings.ToLower(topic.Name) == topicNameLower {
-			return topic.Name, nil
+			return topic.Name
 		}
 	}
 
@@ -720,16 +740,16 @@ func (tm *TopicManager) findSimilarTopic(topicName string) (string, error) {
 		
 		// If one name contains the other, they're similar
 		if strings.Contains(topicLower, topicNameLower) || strings.Contains(topicNameLower, topicLower) {
-			return topic.Name, nil
+			return topic.Name
 		}
 		
 		// Check for plural/singular variations
 		if tm.areSimilarWords(topicNameLower, topicLower) {
-			return topic.Name, nil
+			return topic.Name
 		}
 	}
 
-	return "", fmt.Errorf("no similar topic found")
+	return ""
 }
 
 // areSimilarWords checks if two words are similar (e.g., plural/singular)
@@ -746,6 +766,14 @@ func (tm *TopicManager) areSimilarWords(word1, word2 string) bool {
 
 // checkAndMoveToSeparateFile checks if a topic in MEMORY.md should be moved to a separate file
 func (tm *TopicManager) checkAndMoveToSeparateFile(topicName string) error {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	
+	return tm.checkAndMoveToSeparateFileInternal(topicName)
+}
+
+// checkAndMoveToSeparateFileInternal is the internal version without locking
+func (tm *TopicManager) checkAndMoveToSeparateFileInternal(topicName string) error {
 	// Get topic content from MEMORY.md
 	content, err := tm.memoryIndexManager.GetTopicFromMemory(topicName)
 	if err != nil {
@@ -776,7 +804,7 @@ func (tm *TopicManager) checkAndMoveToSeparateFile(topicName string) error {
 	}
 
 	// Update MEMORY.md index to show the new separate file
-	topics, _ := tm.ListTopics()
+	topics, _ := tm.listTopicsInternal()
 	tm.memoryIndexManager.UpdateMemoryIndex(topics)
 
 	return nil
