@@ -3,6 +3,7 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"simple-telegram-chatbot/internal/memory"
@@ -79,8 +80,6 @@ func NewTopicKnowledgeTool(topicManager *memory.TopicManager) *TopicKnowledgeToo
 
 // GetTopic retrieves a specific topic file by name
 func (t *TopicKnowledgeTool) GetTopic(name string) *TopicToolResult {
-	// TODO: Integrate with Memory Manager's GetTopic method (task 16)
-	
 	if name == "" {
 		return &TopicToolResult{
 			Success: false,
@@ -88,57 +87,87 @@ func (t *TopicKnowledgeTool) GetTopic(name string) *TopicToolResult {
 		}
 	}
 	
-	filePath := fmt.Sprintf("memory/topics/%s.md", name)
+	// Get topic info from TopicManager
+	topics, err := t.topicManager.ListTopics()
+	if err != nil {
+		return &TopicToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to list topics: %v", err),
+		}
+	}
+	
+	// Find the requested topic
+	var topicInfo *memory.TopicInfo
+	for i := range topics {
+		if topics[i].Name == name {
+			topicInfo = &topics[i]
+			break
+		}
+	}
+	
+	if topicInfo == nil {
+		return &TopicToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Topic not found: %s", name),
+		}
+	}
+	
+	// Read topic content
+	content, err := os.ReadFile(topicInfo.FilePath)
+	if err != nil {
+		return &TopicToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to read topic file: %v", err),
+		}
+	}
 	
 	return &TopicToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would retrieve topic: %s", name),
+		Message: fmt.Sprintf("Successfully retrieved topic: %s", name),
 		Data: TopicData{
-			Name:         name,
-			FilePath:     filePath,
-			Content:      fmt.Sprintf("Placeholder content for topic '%s'. This will be populated by Memory Manager.", name),
-			LastModified: time.Now(),
-			TokenCount:   0, // Will be calculated by Memory Manager
+			Name:         topicInfo.Name,
+			FilePath:     topicInfo.FilePath,
+			Content:      string(content),
+			LastModified: topicInfo.LastUpdated,
+			TokenCount:   len(string(content)) / 4, // Rough estimate
 		},
 	}
 }
 
 // ListTopics returns a list of all available topics
 func (t *TopicKnowledgeTool) ListTopics() *TopicToolResult {
-	// TODO: Integrate with Memory Manager's ListTopics method (task 16)
+	topics, err := t.topicManager.ListTopics()
+	if err != nil {
+		return &TopicToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to list topics: %v", err),
+		}
+	}
 	
-	// Placeholder: Would scan memory/topics/ directory
-	topics := []TopicInfo{
-		{
-			Name:         "Programming",
-			FilePath:     "memory/topics/Programming.md",
-			LastModified: time.Now(),
-			Size:         15360, // 15KB placeholder
-			Subdivided:   false,
-		},
-		{
-			Name:         "Psychology",
-			FilePath:     "memory/topics/Psychology.md",
-			LastModified: time.Now(),
-			Size:         8192, // 8KB placeholder
-			Subdivided:   false,
-		},
+	// Convert to TopicInfo format
+	topicInfoList := make([]TopicInfo, len(topics))
+	for i, topic := range topics {
+		topicInfoList[i] = TopicInfo{
+			Name:         topic.Name,
+			FilePath:     topic.FilePath,
+			LastModified: topic.LastUpdated,
+			Size:         topic.Size,
+			Subdivided:   topic.Subdivided,
+		}
 	}
 	
 	return &TopicToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would list all topics. Found %d topics.", len(topics)),
+		Message: fmt.Sprintf("Successfully listed all topics. Found %d topics.", len(topicInfoList)),
 		Data: map[string]interface{}{
-			"topics": topics,
-			"count":  len(topics),
+			"topics": topicInfoList,
+			"count":  len(topicInfoList),
 		},
 	}
 }
 
 // SearchTopics searches across all topic files for a query string
 func (t *TopicKnowledgeTool) SearchTopics(query string) *TopicToolResult {
-	// TODO: Integrate with Memory Manager's SearchTopics method (task 16)
-	
 	if query == "" {
 		return &TopicToolResult{
 			Success: false,
@@ -146,31 +175,38 @@ func (t *TopicKnowledgeTool) SearchTopics(query string) *TopicToolResult {
 		}
 	}
 	
-	// Placeholder: Would search through all topic files
-	results := []TopicSearchResult{
-		{
-			TopicName: "Programming",
-			FilePath:  "memory/topics/Programming.md",
-			Excerpt:   fmt.Sprintf("Placeholder excerpt containing '%s'...", query),
-			Context:   "Surrounding context would be provided here",
-		},
+	results, err := t.topicManager.SearchTopics(query)
+	if err != nil {
+		return &TopicToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to search topics: %v", err),
+		}
+	}
+	
+	// Convert to TopicSearchResult format
+	searchResults := make([]TopicSearchResult, len(results))
+	for i, result := range results {
+		searchResults[i] = TopicSearchResult{
+			TopicName: result.TopicName,
+			FilePath:  result.FilePath,
+			Excerpt:   result.Excerpt,
+			Context:   result.Context,
+		}
 	}
 	
 	return &TopicToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would search topics for: '%s'. Found %d results.", query, len(results)),
+		Message: fmt.Sprintf("Successfully searched topics for: '%s'. Found %d results.", query, len(searchResults)),
 		Data: map[string]interface{}{
 			"query":   query,
-			"results": results,
-			"count":   len(results),
+			"results": searchResults,
+			"count":   len(searchResults),
 		},
 	}
 }
 
 // WriteTopic writes or updates a topic file with new content (replaces existing content)
 func (t *TopicKnowledgeTool) WriteTopic(name, content string) *TopicToolResult {
-	// TODO: Integrate with Memory Manager's UpdateTopicFile method (task 16)
-	
 	if name == "" {
 		return &TopicToolResult{
 			Success: false,
@@ -185,11 +221,19 @@ func (t *TopicKnowledgeTool) WriteTopic(name, content string) *TopicToolResult {
 		}
 	}
 	
+	err := t.topicManager.UpdateTopicFile(name, content)
+	if err != nil {
+		return &TopicToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to write/update topic: %v", err),
+		}
+	}
+	
 	filePath := fmt.Sprintf("memory/topics/%s.md", name)
 	
 	return &TopicToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would write/update topic '%s' at %s", name, filePath),
+		Message: fmt.Sprintf("Successfully wrote/updated topic '%s' at %s", name, filePath),
 		Data: map[string]interface{}{
 			"name":      name,
 			"file_path": filePath,
@@ -201,8 +245,6 @@ func (t *TopicKnowledgeTool) WriteTopic(name, content string) *TopicToolResult {
 
 // CreateTopic creates a new topic file (fails if already exists)
 func (t *TopicKnowledgeTool) CreateTopic(name, content string) *TopicToolResult {
-	// TODO: Integrate with Memory Manager's CreateTopicFile method (task 16)
-	
 	if name == "" {
 		return &TopicToolResult{
 			Success: false,
@@ -217,12 +259,19 @@ func (t *TopicKnowledgeTool) CreateTopic(name, content string) *TopicToolResult 
 		}
 	}
 	
+	err := t.topicManager.CreateTopicFile(name, content)
+	if err != nil {
+		return &TopicToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to create topic: %v", err),
+		}
+	}
+	
 	filePath := fmt.Sprintf("memory/topics/%s.md", name)
 	
-	// Placeholder: Would check if file exists and fail if it does
 	return &TopicToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would create new topic '%s' at %s", name, filePath),
+		Message: fmt.Sprintf("Successfully created new topic '%s' at %s", name, filePath),
 		Data: map[string]interface{}{
 			"name":      name,
 			"file_path": filePath,
@@ -234,8 +283,6 @@ func (t *TopicKnowledgeTool) CreateTopic(name, content string) *TopicToolResult 
 
 // AppendToTopic appends content to an existing topic file
 func (t *TopicKnowledgeTool) AppendToTopic(name, content string) *TopicToolResult {
-	// TODO: Integrate with Memory Manager's AppendToTopicFile method (task 16)
-	
 	if name == "" {
 		return &TopicToolResult{
 			Success: false,
@@ -250,12 +297,19 @@ func (t *TopicKnowledgeTool) AppendToTopic(name, content string) *TopicToolResul
 		}
 	}
 	
+	err := t.topicManager.AppendToTopicFile(name, content)
+	if err != nil {
+		return &TopicToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to append to topic: %v", err),
+		}
+	}
+	
 	filePath := fmt.Sprintf("memory/topics/%s.md", name)
 	
-	// Placeholder: Would check if file exists and append to it
 	return &TopicToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would append to topic '%s' at %s", name, filePath),
+		Message: fmt.Sprintf("Successfully appended to topic '%s' at %s", name, filePath),
 		Data: map[string]interface{}{
 			"name":      name,
 			"file_path": filePath,

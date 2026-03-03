@@ -3,6 +3,7 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"simple-telegram-chatbot/internal/memory"
@@ -62,48 +63,60 @@ func NewMemorySummaryTool(summaryManager *memory.SummaryManager) *MemorySummaryT
 
 // GetDailySummary retrieves the daily summary for a specific date
 func (t *MemorySummaryTool) GetDailySummary(date time.Time) *MemoryToolResult {
-	// TODO: Integrate with Memory Manager's GetDailySummary method (task 16)
-	
 	dateStr := date.Format("2006-01-02")
 	filePath := fmt.Sprintf("memory/chat/%s/daily-summary.md", dateStr)
 	
+	// Read the summary file
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return &MemoryToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to read daily summary for %s: %v", dateStr, err),
+		}
+	}
+	
 	return &MemoryToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would retrieve daily summary for %s", dateStr),
+		Message: fmt.Sprintf("Successfully retrieved daily summary for %s", dateStr),
 		Data: SummaryData{
-			Text:       fmt.Sprintf("Placeholder daily summary content for %s. This will be populated by Memory Manager.", dateStr),
+			Text:       string(content),
 			DateRange:  dateStr,
 			Level:      "daily",
 			FilePath:   filePath,
-			TokenCount: 0, // Will be calculated by Memory Manager
+			TokenCount: len(string(content)) / 4, // Rough estimate
 		},
 	}
 }
 
 // GetWeeklySummary retrieves the weekly summary for a specific week
 func (t *MemorySummaryTool) GetWeeklySummary(weekNum, year int) *MemoryToolResult {
-	// TODO: Integrate with Memory Manager's GetWeeklySummary method (task 16)
-	
 	weekFolder := fmt.Sprintf("week-%02d-%d", weekNum, year)
 	filePath := fmt.Sprintf("memory/chat/%s/summary.md", weekFolder)
 	
+	// Read the summary file
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return &MemoryToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to read weekly summary for week %d of %d: %v", weekNum, year, err),
+		}
+	}
+	
 	return &MemoryToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would retrieve weekly summary for week %d of %d", weekNum, year),
+		Message: fmt.Sprintf("Successfully retrieved weekly summary for week %d of %d", weekNum, year),
 		Data: SummaryData{
-			Text:       fmt.Sprintf("Placeholder weekly summary content for week %d, %d. This will be populated by Memory Manager.", weekNum, year),
+			Text:       string(content),
 			DateRange:  fmt.Sprintf("Week %d, %d", weekNum, year),
 			Level:      "weekly",
 			FilePath:   filePath,
-			TokenCount: 0, // Will be calculated by Memory Manager
+			TokenCount: len(string(content)) / 4, // Rough estimate
 		},
 	}
 }
 
 // GetQuarterlySummary retrieves the quarterly summary for a specific quarter
 func (t *MemorySummaryTool) GetQuarterlySummary(quarter, year int) *MemoryToolResult {
-	// TODO: Integrate with Memory Manager's GetQuarterlySummary method (task 16)
-	
 	if quarter < 1 || quarter > 4 {
 		return &MemoryToolResult{
 			Success: false,
@@ -114,23 +127,30 @@ func (t *MemorySummaryTool) GetQuarterlySummary(quarter, year int) *MemoryToolRe
 	quarterFolder := fmt.Sprintf("Q%d-%d", quarter, year)
 	filePath := fmt.Sprintf("memory/chat/%s/summary.md", quarterFolder)
 	
+	// Read the summary file
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return &MemoryToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to read quarterly summary for Q%d %d: %v", quarter, year, err),
+		}
+	}
+	
 	return &MemoryToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would retrieve quarterly summary for Q%d %d", quarter, year),
+		Message: fmt.Sprintf("Successfully retrieved quarterly summary for Q%d %d", quarter, year),
 		Data: SummaryData{
-			Text:       fmt.Sprintf("Placeholder quarterly summary content for Q%d %d. This will be populated by Memory Manager.", quarter, year),
+			Text:       string(content),
 			DateRange:  fmt.Sprintf("Q%d %d", quarter, year),
 			Level:      "quarterly",
 			FilePath:   filePath,
-			TokenCount: 0, // Will be calculated by Memory Manager
+			TokenCount: len(string(content)) / 4, // Rough estimate
 		},
 	}
 }
 
 // GetSummariesInRange retrieves all summaries within a date range
 func (t *MemorySummaryTool) GetSummariesInRange(startDate, endDate time.Time) *MemoryToolResult {
-	// TODO: Integrate with Memory Manager's GetSummariesInRange method (task 16)
-	
 	// Validate date range
 	if endDate.Before(startDate) {
 		return &MemoryToolResult{
@@ -141,21 +161,32 @@ func (t *MemorySummaryTool) GetSummariesInRange(startDate, endDate time.Time) *M
 	
 	dateRange := fmt.Sprintf("%s to %s", startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
 	
-	// Placeholder: Would collect all daily summaries in range
-	summaries := []SummaryData{
-		{
-			Text:       fmt.Sprintf("Placeholder summary 1 in range %s", dateRange),
-			DateRange:  startDate.Format("2006-01-02"),
-			Level:      "daily",
-			FilePath:   fmt.Sprintf("memory/chat/%s/daily-summary.md", startDate.Format("2006-01-02")),
-			TokenCount: 0,
-		},
-		// More summaries would be added by Memory Manager
+	// Collect all daily summaries in range
+	var summaries []SummaryData
+	currentDate := startDate
+	for !currentDate.After(endDate) {
+		dateStr := currentDate.Format("2006-01-02")
+		filePath := fmt.Sprintf("memory/chat/%s/daily-summary.md", dateStr)
+		
+		// Try to read the summary file
+		content, err := os.ReadFile(filePath)
+		if err == nil {
+			summaries = append(summaries, SummaryData{
+				Text:       string(content),
+				DateRange:  dateStr,
+				Level:      "daily",
+				FilePath:   filePath,
+				TokenCount: len(string(content)) / 4,
+			})
+		}
+		
+		// Move to next day
+		currentDate = currentDate.AddDate(0, 0, 1)
 	}
 	
 	return &MemoryToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would retrieve all summaries from %s", dateRange),
+		Message: fmt.Sprintf("Successfully retrieved %d summaries from %s", len(summaries), dateRange),
 		Data: map[string]interface{}{
 			"date_range": dateRange,
 			"summaries":  summaries,

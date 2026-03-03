@@ -65,8 +65,6 @@ func NewNotesManagementTool(notesManager *memory.NotesManager) *NotesManagementT
 
 // CreateNote creates a new note in the specified category
 func (t *NotesManagementTool) CreateNote(category, name, content string, autoDelete bool) *NotesToolResult {
-	// TODO: Integrate with Memory Manager's CreateNote method (task 16)
-	
 	// Validate category
 	validCategories := map[string]bool{
 		"tasks":       true,
@@ -96,12 +94,21 @@ func (t *NotesManagementTool) CreateNote(category, name, content string, autoDel
 		}
 	}
 	
+	// Create note using NotesManager
+	err := t.notesManager.CreateNote(category, name, content, autoDelete)
+	if err != nil {
+		return &NotesToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to create note: %v", err),
+		}
+	}
+	
 	filePath := fmt.Sprintf("memory/notes/%s/%s.md", category, name)
 	now := time.Now()
 	
 	return &NotesToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would create note '%s' in category '%s' at %s", name, category, filePath),
+		Message: fmt.Sprintf("Successfully created note '%s' in category '%s' at %s", name, category, filePath),
 		Data: NoteData{
 			Name:         name,
 			Category:     category,
@@ -117,8 +124,6 @@ func (t *NotesManagementTool) CreateNote(category, name, content string, autoDel
 
 // ReadNote retrieves a note by identifier (category/name or full path)
 func (t *NotesManagementTool) ReadNote(identifier string) *NotesToolResult {
-	// TODO: Integrate with Memory Manager's ReadNote method (task 16)
-	
 	if identifier == "" {
 		return &NotesToolResult{
 			Success: false,
@@ -126,27 +131,32 @@ func (t *NotesManagementTool) ReadNote(identifier string) *NotesToolResult {
 		}
 	}
 	
-	// Placeholder: Would parse identifier and read the note file
+	note, err := t.notesManager.ReadNote(identifier)
+	if err != nil {
+		return &NotesToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to read note: %v", err),
+		}
+	}
+	
 	return &NotesToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would read note: %s", identifier),
+		Message: fmt.Sprintf("Successfully read note: %s", identifier),
 		Data: NoteData{
-			Name:         "example-note",
-			Category:     "tasks",
-			FilePath:     fmt.Sprintf("memory/notes/%s", identifier),
-			Created:      time.Now().Add(-24 * time.Hour),
-			LastModified: time.Now(),
-			Status:       "in_progress",
-			AutoDelete:   true,
-			Content:      "Placeholder note content. This will be populated by Memory Manager.",
+			Name:         note.Name,
+			Category:     note.Category,
+			FilePath:     note.Path,
+			Created:      note.Created,
+			LastModified: note.LastModified,
+			Status:       note.Status,
+			AutoDelete:   note.AutoDelete,
+			Content:      note.Content,
 		},
 	}
 }
 
 // UpdateNote updates an existing note's content, status, or auto_delete flag
 func (t *NotesManagementTool) UpdateNote(identifier, content, status string, autoDelete bool) *NotesToolResult {
-	// TODO: Integrate with Memory Manager's UpdateNote method (task 16)
-	
 	if identifier == "" {
 		return &NotesToolResult{
 			Success: false,
@@ -179,9 +189,17 @@ func (t *NotesManagementTool) UpdateNote(identifier, content, status string, aut
 	}
 	updates = append(updates, fmt.Sprintf("auto_delete to %v", autoDelete))
 	
+	err := t.notesManager.UpdateNote(identifier, content, status, autoDelete)
+	if err != nil {
+		return &NotesToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to update note: %v", err),
+		}
+	}
+	
 	return &NotesToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would update note '%s': %v", identifier, updates),
+		Message: fmt.Sprintf("Successfully updated note '%s': %v", identifier, updates),
 		Data: map[string]interface{}{
 			"identifier":    identifier,
 			"updated_fields": updates,
@@ -192,8 +210,6 @@ func (t *NotesManagementTool) UpdateNote(identifier, content, status string, aut
 
 // DeleteNote deletes a note by identifier
 func (t *NotesManagementTool) DeleteNote(identifier string) *NotesToolResult {
-	// TODO: Integrate with Memory Manager's DeleteNote method (task 16)
-	
 	if identifier == "" {
 		return &NotesToolResult{
 			Success: false,
@@ -201,9 +217,17 @@ func (t *NotesManagementTool) DeleteNote(identifier string) *NotesToolResult {
 		}
 	}
 	
+	err := t.notesManager.DeleteNote(identifier)
+	if err != nil {
+		return &NotesToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to delete note: %v", err),
+		}
+	}
+	
 	return &NotesToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would delete note: %s and update notes/index.md", identifier),
+		Message: fmt.Sprintf("Successfully deleted note: %s and updated notes/index.md", identifier),
 		Data: map[string]interface{}{
 			"identifier": identifier,
 			"deleted":    true,
@@ -214,8 +238,6 @@ func (t *NotesManagementTool) DeleteNote(identifier string) *NotesToolResult {
 
 // ListNotes lists notes filtered by category and/or status
 func (t *NotesManagementTool) ListNotes(category, status string) *NotesToolResult {
-	// TODO: Integrate with Memory Manager's ListNotes method (task 16)
-	
 	// Validate category if provided
 	if category != "" {
 		validCategories := map[string]bool{
@@ -262,36 +284,36 @@ func (t *NotesManagementTool) ListNotes(category, status string) *NotesToolResul
 		filterDesc = fmt.Sprintf("notes with %v", filters)
 	}
 	
-	// Placeholder: Would scan notes directory and filter
-	notes := []NoteData{
-		{
-			Name:         "example-task",
-			Category:     "tasks",
-			FilePath:     "memory/notes/tasks/example-task.md",
-			Created:      time.Now().Add(-48 * time.Hour),
-			LastModified: time.Now().Add(-24 * time.Hour),
-			Status:       "in_progress",
-			AutoDelete:   true,
+	// List notes using NotesManager
+	notes, err := t.notesManager.ListNotes(category, status)
+	if err != nil {
+		return &NotesToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to list notes: %v", err),
+		}
+	}
+	
+	// Convert to NoteData format
+	noteDataList := make([]NoteData, len(notes))
+	for i, note := range notes {
+		noteDataList[i] = NoteData{
+			Name:         note.Name,
+			Category:     note.Category,
+			FilePath:     note.Path,
+			Created:      note.Created,
+			LastModified: note.LastModified,
+			Status:       note.Status,
+			AutoDelete:   note.AutoDelete,
 			Content:      "", // Content not included in list view
-		},
-		{
-			Name:         "example-idea",
-			Category:     "ideas",
-			FilePath:     "memory/notes/ideas/example-idea.md",
-			Created:      time.Now().Add(-72 * time.Hour),
-			LastModified: time.Now().Add(-48 * time.Hour),
-			Status:       "in_progress",
-			AutoDelete:   true,
-			Content:      "", // Content not included in list view
-		},
+		}
 	}
 	
 	return &NotesToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would list %s. Found %d notes.", filterDesc, len(notes)),
+		Message: fmt.Sprintf("Successfully listed %s. Found %d notes.", filterDesc, len(noteDataList)),
 		Data: map[string]interface{}{
-			"notes":    notes,
-			"count":    len(notes),
+			"notes":    noteDataList,
+			"count":    len(noteDataList),
 			"category": category,
 			"status":   status,
 		},

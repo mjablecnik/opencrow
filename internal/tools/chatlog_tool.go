@@ -1,8 +1,12 @@
 package tools
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -61,8 +65,6 @@ func NewChatLogSearchTool(memoryBasePath string) *ChatLogSearchTool {
 
 // SearchLogs searches chat logs for a query string within an optional date range
 func (t *ChatLogSearchTool) SearchLogs(query string, startDate, endDate time.Time, maxResults int) *ChatLogToolResult {
-	// TODO: Integrate with Memory Manager's SearchLogs method (task 16)
-	
 	if query == "" {
 		return &ChatLogToolResult{
 			Success: false,
@@ -80,7 +82,7 @@ func (t *ChatLogSearchTool) SearchLogs(query string, startDate, endDate time.Tim
 	
 	// Set default max results if not provided
 	if maxResults <= 0 {
-		maxResults = 50 // Default limit to prevent token overflow
+		maxResults = 10 // Default limit to prevent token overflow
 	}
 	
 	// Limit max results to prevent excessive token usage
@@ -97,16 +99,40 @@ func (t *ChatLogSearchTool) SearchLogs(query string, startDate, endDate time.Tim
 		dateRange = fmt.Sprintf("until %s", endDate.Format("2006-01-02"))
 	}
 	
-	// Placeholder: Would search through session log files
-	results := []LogSearchResult{
-		{
-			Date:       time.Now(),
-			SessionID:  "session-001",
-			Excerpt:    fmt.Sprintf("Placeholder excerpt containing '%s'...", query),
-			Context:    "Surrounding context from the conversation would be provided here",
-			FilePath:   "memory/chat/2026-03-01/session-001.log",
-			TokenCount: 0, // Will be calculated by Memory Manager
-		},
+	// Search through chat logs
+	var results []LogSearchResult
+	chatPath := filepath.Join(t.memoryBasePath, "chat")
+	
+	// Walk through all daily folders
+	err := filepath.Walk(chatPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Skip errors
+		}
+		
+		// Only process .log files
+		if info.IsDir() || !strings.HasSuffix(path, ".log") {
+			return nil
+		}
+		
+		// Check if we've reached max results
+		if len(results) >= maxResults {
+			return filepath.SkipAll
+		}
+		
+		// Search in this file
+		fileResults, err := t.searchInFile(path, query, maxResults-len(results))
+		if err == nil {
+			results = append(results, fileResults...)
+		}
+		
+		return nil
+	})
+	
+	if err != nil {
+		return &ChatLogToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to search chat logs: %v", err),
+		}
 	}
 	
 	// Add efficiency warning
@@ -114,7 +140,7 @@ func (t *ChatLogSearchTool) SearchLogs(query string, startDate, endDate time.Tim
 	
 	return &ChatLogToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would search chat logs for '%s' in %s. Found %d results (limited to %d). %s", query, dateRange, len(results), maxResults, warning),
+		Message: fmt.Sprintf("Successfully searched chat logs for '%s' in %s. Found %d results (limited to %d). %s", query, dateRange, len(results), maxResults, warning),
 		Data: map[string]interface{}{
 			"query":       query,
 			"date_range":  dateRange,
@@ -126,10 +152,62 @@ func (t *ChatLogSearchTool) SearchLogs(query string, startDate, endDate time.Tim
 	}
 }
 
+// searchInFile searches for query in a single log file
+func (t *ChatLogSearchTool) searchInFile(filePath, query string, maxResults int) ([]LogSearchResult, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	
+	var results []LogSearchResult
+	scanner := bufio.NewScanner(file)
+	var currentContext []string
+	lineNum := 0
+	
+	for scanner.Scan() && len(results) < maxResults {
+		line := scanner.Text()
+		lineNum++
+		
+		// Keep last 5 lines for context
+		currentContext = append(currentContext, line)
+		if len(currentContext) > 5 {
+			currentContext = currentContext[1:]
+		}
+		
+		// Check if line contains query (case-insensitive)
+		if strings.Contains(strings.ToLower(line), strings.ToLower(query)) {
+			// Extract date and session from file path
+			parts := strings.Split(filePath, string(filepath.Separator))
+			var dateStr, sessionID string
+			for i, part := range parts {
+				if len(part) == 10 && strings.Count(part, "-") == 2 {
+					dateStr = part
+					if i+1 < len(parts) {
+						sessionID = strings.TrimSuffix(parts[i+1], ".log")
+					}
+					break
+				}
+			}
+			
+			date, _ := time.Parse("2006-01-02", dateStr)
+			
+			results = append(results, LogSearchResult{
+				Date:       date,
+				SessionID:  sessionID,
+				Excerpt:    line,
+				Context:    strings.Join(currentContext, "\n"),
+				FilePath:   filePath,
+				TokenCount: len(line) / 4,
+			})
+		}
+	}
+	
+	return results, scanner.Err()
+}
+
 // GetSessionLog retrieves a complete session log for a specific date and session number
 func (t *ChatLogSearchTool) GetSessionLog(date time.Time, sessionNum int) *ChatLogToolResult {
-	// TODO: Integrate with Memory Manager's GetSessionLog method (task 16)
-	
 	if sessionNum <= 0 {
 		return &ChatLogToolResult{
 			Success: false,
@@ -139,32 +217,31 @@ func (t *ChatLogSearchTool) GetSessionLog(date time.Time, sessionNum int) *ChatL
 	
 	dateStr := date.Format("2006-01-02")
 	sessionID := fmt.Sprintf("session-%03d", sessionNum)
-	filePath := fmt.Sprintf("memory/chat/%s/%s.log", dateStr, sessionID)
+	filePath := filepath.Join(t.memoryBasePath, "chat", dateStr, sessionID+".log")
 	
-	// Placeholder: Would read the entire session log file
-	logContent := fmt.Sprintf(`[%s 14:30:15] User: Placeholder message 1
-
-[%s 14:30:22] Assistant: Placeholder response 1
-
-[%s 14:32:10] User: Placeholder message 2
-
-[%s 14:32:18] Assistant: Placeholder response 2
-
-This is placeholder content. The actual session log would be read from %s by Memory Manager.`, 
-		dateStr, dateStr, dateStr, dateStr, filePath)
+	// Read the session log file
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return &ChatLogToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to read session log for %s, session %d: %v", dateStr, sessionNum, err),
+		}
+	}
+	
+	logContent := string(content)
 	
 	// Add efficiency warning
 	warning := "⚠️ EFFICIENCY NOTE: Retrieving full session logs is token-intensive. Consider using session summaries (memory_summary tool) for better efficiency when possible."
 	
 	return &ChatLogToolResult{
 		Success: true,
-		Message: fmt.Sprintf("[PLACEHOLDER] Would retrieve session log for %s, session %d. %s", dateStr, sessionNum, warning),
+		Message: fmt.Sprintf("Successfully retrieved session log for %s, session %d. %s", dateStr, sessionNum, warning),
 		Data: map[string]interface{}{
 			"date":        dateStr,
 			"session_id":  sessionID,
 			"file_path":   filePath,
 			"content":     logContent,
-			"token_count": 0, // Will be calculated by Memory Manager
+			"token_count": len(logContent) / 4, // Rough estimate
 			"warning":     warning,
 		},
 	}
