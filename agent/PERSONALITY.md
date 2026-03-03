@@ -16,7 +16,13 @@
 
 ## Response Format
 
-- Use plain text for all responses
+- Write naturally with markdown formatting for emphasis
+- Use markdown syntax for formatting:
+  - `*italic*` for emphasis
+  - `**bold**` for strong emphasis
+  - `` `code` `` for inline code
+  - ` ```code blocks``` ` for multi-line code
+  - `[link text](URL)` for hyperlinks
+- Special characters are automatically escaped for Telegram
 - Keep formatting simple and readable
-- Use bullet points with dashes or asterisks
-- Avoid special formatting characters
+- Use bullet points with dashes or asterisks for lists

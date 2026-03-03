@@ -3,6 +3,7 @@ package channel
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -146,10 +147,138 @@ func (tc *TelegramChannel) HandleMessage(update tgbotapi.Update) error {
 	return nil
 }
 
-// SendMessage sends a basic message to a user
+// escapeMarkdownV2 intelligently escapes special characters for Telegram MarkdownV2
+// while preserving markdown formatting syntax
+func (tc *TelegramChannel) escapeMarkdownV2(text string) string {
+	var result strings.Builder
+	result.Grow(len(text) * 2)
+	
+	inCodeBlock := false
+	inInlineCode := false
+	
+	i := 0
+	for i < len(text) {
+		// Check for code blocks (```...```)
+		if i+2 < len(text) && text[i:i+3] == "```" {
+			if !inCodeBlock {
+				// Opening code block
+				result.WriteString("```")
+				i += 3
+				inCodeBlock = true
+				continue
+			} else {
+				// Closing code block
+				result.WriteString("```")
+				i += 3
+				inCodeBlock = false
+				continue
+			}
+		}
+		
+		// Inside code block, write everything as-is
+		if inCodeBlock {
+			result.WriteByte(text[i])
+			i++
+			continue
+		}
+		
+		// Check for inline code (`...`)
+		if text[i] == '`' && !inInlineCode {
+			// Opening inline code
+			result.WriteByte('`')
+			i++
+			inInlineCode = true
+			continue
+		} else if text[i] == '`' && inInlineCode {
+			// Closing inline code
+			result.WriteByte('`')
+			i++
+			inInlineCode = false
+			continue
+		}
+		
+		// Inside inline code, write everything as-is
+		if inInlineCode {
+			result.WriteByte(text[i])
+			i++
+			continue
+		}
+		
+		// Check for links ([text](url))
+		if text[i] == '[' {
+			// Find the closing ] and check for (url)
+			closeBracket := strings.IndexByte(text[i+1:], ']')
+			if closeBracket != -1 && closeBracket > 0 { // Ensure there's content
+				closeBracket += i + 1
+				if closeBracket+1 < len(text) && text[closeBracket+1] == '(' {
+					closeParen := strings.IndexByte(text[closeBracket+2:], ')')
+					if closeParen != -1 && closeParen > 0 { // Ensure there's content
+						closeParen += closeBracket + 2 + 1
+						// Write the entire link as-is
+						result.WriteString(text[i:closeParen])
+						i = closeParen
+						continue
+					}
+				}
+			}
+		}
+		
+		// Check for bold (**text**)
+		if i+1 < len(text) && text[i:i+2] == "**" {
+			// Find closing **
+			end := strings.Index(text[i+2:], "**")
+			if end != -1 && end > 0 { // Ensure there's content between
+				end += i + 2 + 2
+				// Write the bold text
+				result.WriteString(text[i:end])
+				i = end
+				continue
+			}
+		}
+		
+		// Check for italic (*text*)
+		if text[i] == '*' {
+			// Find closing *
+			end := strings.IndexByte(text[i+1:], '*')
+			if end != -1 && end > 0 { // Ensure there's content between
+				end += i + 1 + 1
+				result.WriteString(text[i:end])
+				i = end
+				continue
+			}
+		}
+		
+		// Check for underline (__text__)
+		if i+1 < len(text) && text[i:i+2] == "__" {
+			end := strings.Index(text[i+2:], "__")
+			if end != -1 && end > 0 { // Ensure there's content between
+				end += i + 2 + 2
+				result.WriteString(text[i:end])
+				i = end
+				continue
+			}
+		}
+		
+		// Escape special characters
+		char := text[i]
+		switch char {
+		case '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!':
+			result.WriteByte('\\')
+			result.WriteByte(char)
+		default:
+			result.WriteByte(char)
+		}
+		i++
+	}
+	
+	return result.String()
+}
+
+// SendMessage sends a basic message to a user without formatting
 func (tc *TelegramChannel) SendMessage(chatID int64, text string) error {
 	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = "" // No parsing, plain text only
+	// Disable markdown parsing - send as plain text
+	msg.ParseMode = ""
 	_, err := tc.bot.Send(msg)
 	if err != nil {
 		return fmt.Errorf("failed to send message: %w", err)
