@@ -87,7 +87,25 @@ func (t *TopicKnowledgeTool) GetTopic(name string) *TopicToolResult {
 		}
 	}
 	
-	// Get topic info from TopicManager
+	// First, try to get from MEMORY.md
+	memoryIndexManager := memory.NewMemoryIndexManager(t.topicManager.GetMemoryBasePath())
+	content, err := memoryIndexManager.GetTopicFromMemory(name)
+	if err == nil {
+		// Topic found in MEMORY.md
+		return &TopicToolResult{
+			Success: true,
+			Message: fmt.Sprintf("Successfully retrieved topic from MEMORY.md: %s", name),
+			Data: TopicData{
+				Name:         name,
+				FilePath:     "memory/MEMORY.md",
+				Content:      content,
+				LastModified: time.Now(), // MEMORY.md is always current
+				TokenCount:   len(content) / 4,
+			},
+		}
+	}
+	
+	// Get topic info from TopicManager (separate file)
 	topics, err := t.topicManager.ListTopics()
 	if err != nil {
 		return &TopicToolResult{
@@ -113,7 +131,7 @@ func (t *TopicKnowledgeTool) GetTopic(name string) *TopicToolResult {
 	}
 	
 	// Read topic content
-	content, err := os.ReadFile(topicInfo.FilePath)
+	contentBytes, err := os.ReadFile(topicInfo.FilePath)
 	if err != nil {
 		return &TopicToolResult{
 			Success: false,
@@ -127,9 +145,9 @@ func (t *TopicKnowledgeTool) GetTopic(name string) *TopicToolResult {
 		Data: TopicData{
 			Name:         topicInfo.Name,
 			FilePath:     topicInfo.FilePath,
-			Content:      string(content),
+			Content:      string(contentBytes),
 			LastModified: topicInfo.LastUpdated,
-			TokenCount:   len(string(content)) / 4, // Rough estimate
+			TokenCount:   len(string(contentBytes)) / 4, // Rough estimate
 		},
 	}
 }

@@ -14,6 +14,7 @@ type IdentityFiles struct {
 	Soul        string
 	User        string
 	Tools       string // Tool usage guidelines
+	Memory      string // Memory index (MEMORY.md)
 }
 
 // IdentityContext provides identity content for LLM context
@@ -23,6 +24,7 @@ type IdentityContext struct {
 	Soul        string
 	User        string
 	Tools       string // Tool usage guidelines
+	Memory      string // Memory index (MEMORY.md)
 }
 
 // Agent manages identity files and provides context to the LLM
@@ -86,6 +88,17 @@ func (a *Agent) LoadIdentityFiles() (*IdentityFiles, error) {
 	}
 	files.Tools = tools
 
+	// Read MEMORY.md from memory directory
+	memoryPath := filepath.Join(a.identityDir, "..", "memory", "MEMORY.md")
+	memory, err := utils.ReadFile(memoryPath)
+	if err != nil {
+		// MEMORY.md is optional, log warning but don't fail
+		a.logger.WarnWithComponent("Agent", "Failed to read MEMORY.md, continuing without it", "error", err.Error())
+		files.Memory = ""
+	} else {
+		files.Memory = memory
+	}
+
 	a.files = files
 	a.logger.InfoWithComponent("Agent", "Successfully loaded all identity files")
 
@@ -134,5 +147,6 @@ func (a *Agent) GetIdentityContext() IdentityContext {
 		Soul:        a.files.Soul,
 		User:        a.files.User,
 		Tools:       a.files.Tools,
+		Memory:      a.files.Memory,
 	}
 }

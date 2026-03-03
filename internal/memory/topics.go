@@ -35,6 +35,7 @@ type TopicManager struct {
 	memoryBasePath     string
 	topicSizeThreshold int64
 	logger             *utils.Logger
+	memoryIndexManager *MemoryIndexManager
 }
 
 // NewTopicManager creates a new topic manager
@@ -43,7 +44,13 @@ func NewTopicManager(memoryBasePath string, topicSizeThreshold int64) *TopicMana
 		memoryBasePath:     memoryBasePath,
 		topicSizeThreshold: topicSizeThreshold,
 		logger:             utils.NewLogger("info"),
+		memoryIndexManager: NewMemoryIndexManager(memoryBasePath),
 	}
+}
+
+// GetMemoryBasePath returns the memory base path
+func (tm *TopicManager) GetMemoryBasePath() string {
+	return tm.memoryBasePath
 }
 
 // ExtractTopics extracts topics from content using the provided topic extractions
@@ -131,7 +138,52 @@ func (tm *TopicManager) CreateTopicFile(topicName, content string) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	return tm.createTopicFileInternal(topicName, content)
+	// First, check if a similar topic already exists
+	existingTopic, err := tm.findSimilarTopic(topicName)
+	if err == nil && existingTopic != "" {
+		tm.logger.InfoWithComponent("TopicManager", "Similar topic found, updating instead of creating",
+			"requested_topic", topicName,
+			"existing_topic", existingTopic,
+		)
+		// Update the existing topic instead
+		return tm.updateTopicFileInternal(existingTopic, content)
+	}
+
+	// Check if topic already exists in MEMORY.md
+	_, err = tm.memoryIndexManager.GetTopicFromMemory(topicName)
+	if err == nil {
+		// Topic exists in MEMORY.md, update it instead
+		tm.logger.InfoWithComponent("TopicManager", "Topic exists in MEMORY.md, updating instead",
+			"topic_name", topicName,
+		)
+		return tm.memoryIndexManager.UpdateTopicInMemory(topicName, content)
+	}
+
+	// Check if topic file already exists
+	topicPath := tm.getTopicFilePath(topicName)
+	if _, err := os.Stat(topicPath); err == nil {
+		return fmt.Errorf("topic file already exists: %s", topicName)
+	}
+
+	// Add to MEMORY.md first (not as a separate file)
+	if err := tm.memoryIndexManager.AddTopicToMemory(topicName, content); err != nil {
+		return fmt.Errorf("failed to add topic to MEMORY.md: %w", err)
+	}
+
+	tm.logger.InfoWithComponent("TopicManager", "Topic added to MEMORY.md",
+		"topic_name", topicName,
+		"size", len(content),
+	)
+
+	// Check if MEMORY.md topic needs to be moved to separate file
+	if err := tm.checkAndMoveToSeparateFile(topicName); err != nil {
+		tm.logger.WarnWithComponent("TopicManager", "Failed to check if topic should be moved to separate file",
+			"topic_name", topicName,
+			"error", err.Error(),
+		)
+	}
+
+	return nil
 }
 
 // createTopicFileInternal is the internal implementation without locking
@@ -176,6 +228,31 @@ func (tm *TopicManager) UpdateTopicFile(topicName, content string) error {
 
 // updateTopicFileInternal is the internal implementation without locking
 func (tm *TopicManager) updateTopicFileInternal(topicName, content string) error {
+	// First check if topic exists in MEMORY.md
+	_, err := tm.memoryIndexManager.GetTopicFromMemory(topicName)
+	if err == nil {
+		// Topic is in MEMORY.md, update it there
+		if err := tm.memoryIndexManager.UpdateTopicInMemory(topicName, content); err != nil {
+			return fmt.Errorf("failed to update topic in MEMORY.md: %w", err)
+		}
+
+		tm.logger.InfoWithComponent("TopicManager", "Topic updated in MEMORY.md",
+			"topic_name", topicName,
+			"size", len(content),
+		)
+
+		// Check if it should be moved to a separate file
+		if err := tm.checkAndMoveToSeparateFile(topicName); err != nil {
+			tm.logger.WarnWithComponent("TopicManager", "Failed to check if topic should be moved to separate file",
+				"topic_name", topicName,
+				"error", err.Error(),
+			)
+		}
+
+		return nil
+	}
+
+	// Topic is in a separate file
 	topicPath := tm.getTopicFilePath(topicName)
 
 	// Check if file exists
@@ -205,6 +282,10 @@ func (tm *TopicManager) updateTopicFileInternal(topicName, content string) error
 		"file_path", topicPath,
 		"size", len(formattedContent),
 	)
+
+	// Update MEMORY.md index
+	topics, _ := tm.ListTopics()
+	tm.memoryIndexManager.UpdateMemoryIndex(topics)
 
 	return nil
 }
@@ -614,4 +695,89 @@ func (tm *TopicManager) getTopicNameFromPath(path string) string {
 	relPath = filepath.ToSlash(relPath)
 
 	return relPath
+}
+
+// findSimilarTopic checks if a similar topic already exists
+// Returns the name of the similar topic, or empty string if none found
+func (tm *TopicManager) findSimilarTopic(topicName string) (string, error) {
+	topics, err := tm.ListTopics()
+	if err != nil {
+		return "", err
+	}
+
+	topicNameLower := strings.ToLower(topicName)
+	
+	// Check for exact match (case-insensitive)
+	for _, topic := range topics {
+		if strings.ToLower(topic.Name) == topicNameLower {
+			return topic.Name, nil
+		}
+	}
+
+	// Check for similar names (contains or is contained)
+	for _, topic := range topics {
+		topicLower := strings.ToLower(topic.Name)
+		
+		// If one name contains the other, they're similar
+		if strings.Contains(topicLower, topicNameLower) || strings.Contains(topicNameLower, topicLower) {
+			return topic.Name, nil
+		}
+		
+		// Check for plural/singular variations
+		if tm.areSimilarWords(topicNameLower, topicLower) {
+			return topic.Name, nil
+		}
+	}
+
+	return "", fmt.Errorf("no similar topic found")
+}
+
+// areSimilarWords checks if two words are similar (e.g., plural/singular)
+func (tm *TopicManager) areSimilarWords(word1, word2 string) bool {
+	// Simple heuristic: if one word is the other + 's' or 'es'
+	if word1+"s" == word2 || word1+"es" == word2 {
+		return true
+	}
+	if word2+"s" == word1 || word2+"es" == word1 {
+		return true
+	}
+	return false
+}
+
+// checkAndMoveToSeparateFile checks if a topic in MEMORY.md should be moved to a separate file
+func (tm *TopicManager) checkAndMoveToSeparateFile(topicName string) error {
+	// Get topic content from MEMORY.md
+	content, err := tm.memoryIndexManager.GetTopicFromMemory(topicName)
+	if err != nil {
+		// Topic is not in MEMORY.md, nothing to do
+		return nil
+	}
+
+	// Check if content exceeds threshold
+	if int64(len(content)) < tm.topicSizeThreshold {
+		// Topic is still small enough to stay in MEMORY.md
+		return nil
+	}
+
+	tm.logger.InfoWithComponent("TopicManager", "Topic exceeds size threshold, moving to separate file",
+		"topic_name", topicName,
+		"size", len(content),
+		"threshold", tm.topicSizeThreshold,
+	)
+
+	// Create separate topic file
+	if err := tm.createTopicFileInternal(topicName, content); err != nil {
+		return fmt.Errorf("failed to create separate topic file: %w", err)
+	}
+
+	// Remove from MEMORY.md
+	if err := tm.memoryIndexManager.RemoveTopicFromMemory(topicName); err != nil {
+		return fmt.Errorf("failed to remove topic from MEMORY.md: %w", err)
+	}
+
+	// Update MEMORY.md index to show the new separate file
+	topics, _ := tm.ListTopics()
+	tm.memoryIndexManager.UpdateMemoryIndex(topics)
+
+	return nil
 }

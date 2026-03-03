@@ -238,6 +238,10 @@ func (c *OpenRouterClient) buildSystemContext(identityContext agent.IdentityCont
 		systemContext += "# Tool Usage Guidelines\n\n" + identityContext.Tools + "\n\n"
 	}
 	
+	if identityContext.Memory != "" {
+		systemContext += "# Memory Index\n\n" + identityContext.Memory + "\n\n"
+	}
+	
 	return systemContext
 }
 

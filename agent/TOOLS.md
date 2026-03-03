@@ -113,46 +113,47 @@ The scheduler needs to know what type of task to execute. If `task_type` is empt
 
 ### When to Save Important Information
 
-When the user tells you something important that should be remembered long-term, you have two options:
+When the user tells you something important that should be remembered long-term, you should save it to topics using the `topic_knowledge` tool.
 
-#### Option 1: Save to MEMORY.md (for general important facts)
+#### How Topics Work
 
-**Use MEMORY.md for:**
-- Important user preferences or facts that don't fit into a specific topic
-- Quick reference information that should always be visible
-- Cross-cutting information that applies to multiple topics
+**All topics start in MEMORY.md:**
+- When you create a new topic, it's initially saved directly in MEMORY.md
+- MEMORY.md is automatically loaded as part of your identity context
+- You can see all topics in MEMORY.md without needing to load them separately
 
-**How to save to MEMORY.md:**
-You cannot directly edit MEMORY.md via tools. Instead, tell the user:
-"This is important information. I should add it to my MEMORY.md file. Can you please add this to agent/MEMORY.md for me?"
+**Automatic file creation:**
+- When a topic grows beyond a certain size threshold, it's automatically moved to a separate file in `topics/`
+- The system handles this automatically - you don't need to worry about it
+- MEMORY.md is updated to show where the topic file is located
 
-**Example:**
-```markdown
-## User Preferences
-- Takes Multivitamins after breakfast every morning
-- Prefers practical examples over theory
-- Works best in the morning
-```
+**Avoid duplicate topics:**
+- Before creating a new topic, the system checks if a similar topic already exists
+- If a similar topic is found (e.g., "Programming" vs "Program"), the existing topic is updated instead
+- This keeps the number of topics minimal and organized
 
-#### Option 2: Save to Topics (for domain-specific knowledge)
+#### Using the topic_knowledge Tool
 
-**Use Topics for:**
-- Programming knowledge, code examples, configurations
-- Psychology insights, conversation patterns
-- Food preferences, dietary information, meal plans
-- Health information, exercise routines, medications
-- Any domain-specific knowledge that will be referenced when discussing that topic
-
-**How to save to Topics:**
-Use the `topic_knowledge` tool with operation="write" or "create":
-
+**Create or update a topic:**
 ```json
 {
-  "operation": "write",
+  "operation": "create",
   "name": "Health",
-  "content": "# Health\n\n## Medications\n- Multivitamins: Take after breakfast every morning\n- Reminder needed when user mentions breakfast"
+  "content": "# Health\n\n## Medications\n- Multivitamins: Take after breakfast every morning"
 }
 ```
+
+**Note:** If a similar topic already exists, it will be updated instead of creating a duplicate.
+
+**Get a topic:**
+```json
+{
+  "operation": "get",
+  "name": "Health"
+}
+```
+
+This works for both topics in MEMORY.md and separate topic files.
 
 **CRITICAL: Automatic Topic Loading**
 
@@ -178,9 +179,10 @@ You respond: "Nezapomeň si vzít Multivitaminy!" (Don't forget your Multivitami
 ### Topic Management Best Practices
 
 1. **Create topics proactively** when user shares domain-specific knowledge
-2. **Update topics** when new information is added to existing domains
-3. **Load topics automatically** when conversation enters that domain
-4. **Keep topics organized** - use clear structure and sections
+2. **Use descriptive names** - singular form preferred (e.g., "Programming" not "Programs")
+3. **Update existing topics** instead of creating similar ones
+4. **Load topics automatically** when conversation enters that domain
+5. **Keep topics organized** - use clear structure and sections
 
 ### Available Topic Domains
 
