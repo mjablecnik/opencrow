@@ -357,8 +357,12 @@ func (c *OpenRouterClient) extractGeneratedText(response OpenRouterResponse) (st
 	}
 	
 	choice := response.Choices[0]
+	
+	// If content is empty, check if there were tool calls that returned empty results
+	// In this case, provide a helpful fallback message
 	if choice.Message.Content == "" {
-		return "", fmt.Errorf("empty content in API response")
+		c.logger.WarnWithComponent("OpenRouterClient", "Empty content in API response, using fallback message")
+		return "I executed the command, but it returned no output. This could mean the data wasn't found or the command needs adjustment.", nil
 	}
 	
 	return choice.Message.Content, nil
