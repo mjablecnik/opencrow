@@ -18,7 +18,6 @@ type TelegramChannel struct {
 	llmClient            *llm.OpenRouterClient
 	sessionManager       *session.SessionManager
 	memorySessionManager *memory.SessionManager
-	summaryManager       memory.SummaryManagerInterface
 	logger               *utils.Logger
 	updatesChan          tgbotapi.UpdatesChannel
 	stopChan             chan struct{}
@@ -30,7 +29,6 @@ func NewTelegramChannel(
 	llmClient *llm.OpenRouterClient,
 	sessionManager *session.SessionManager,
 	memorySessionManager *memory.SessionManager,
-	summaryManager memory.SummaryManagerInterface,
 	logger *utils.Logger,
 ) (*TelegramChannel, error) {
 	bot, err := tgbotapi.NewBotAPI(botToken)
@@ -45,7 +43,6 @@ func NewTelegramChannel(
 		llmClient:            llmClient,
 		sessionManager:       sessionManager,
 		memorySessionManager: memorySessionManager,
-		summaryManager:       summaryManager,
 		logger:               logger,
 		stopChan:             make(chan struct{}),
 	}, nil
@@ -218,8 +215,8 @@ func (tc *TelegramChannel) handleResetCommand(chatID int64) error {
 		// Continue even if session doesn't exist
 	}
 
-	// Step 2: Perform manual session reset in memory (generates summary and extracts topics)
-	if err := tc.memorySessionManager.PerformManualSessionReset(tc.summaryManager); err != nil {
+	// Step 2: Perform manual session reset (archives session-latest.log, NO summarization)
+	if err := tc.memorySessionManager.PerformManualSessionReset(); err != nil {
 		tc.logger.ErrorWithComponent("TelegramChannel", "Failed to perform manual session reset", "chatID", chatID, "error", err)
 		// Send error message to user
 		errorMsg := "Failed to reset session. Please try again."

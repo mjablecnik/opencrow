@@ -1,9 +1,11 @@
 package memory
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,32 +15,35 @@ import (
 // SessionState represents the current state of a session
 type SessionState struct {
 	IsActive       bool      // Whether the session is currently active
-	SessionNumber  int       // Current session number
-	StartTime      time.Time // When the current session started
+	SessionNumber  int       // Current session number (for archived sessions in daily folders)
+	StartTime      time.Time // When the current session started (first message timestamp)
 	LastActivity   time.Time // Last message timestamp
 	MessageCount   int       // Number of messages in current session
 	TokenCount     int       // Approximate token count in current session
 	HasBeenReset   bool      // Whether the session has been reset at least once
 	LastResetTime  time.Time // When the last reset occurred
-	LastResetType  string    // Type of last reset: "scheduled", "manual", "token_based", or ""
+	LastResetType  string    // Type of last reset: "scheduled", "manual", or ""
 }
 
-// SessionManager handles session logging and tracking
+// SessionManager handles session logging and tracking using session-latest.log approach
+// All active messages are written to memory/chat/session-latest.log
+// On reset, this file is moved to the appropriate daily folder with proper numbering
 type SessionManager struct {
-	mu                sync.RWMutex
-	currentDate       string // YYYY-MM-DD format
-	currentSessionNum int
-	currentLogPath    string
-	memoryBasePath    string
-	state             SessionState // Current session state
-	logger            *utils.Logger // Logger for session operations
+	mu             sync.RWMutex
+	latestLogPath  string        // Path to session-latest.log
+	memoryBasePath string        // Base path for memory storage
+	state          SessionState  // Current session state
+	logger         *utils.Logger // Logger for session operations
 }
 
 // NewSessionManager creates a new session manager
 func NewSessionManager(memoryBasePath string) *SessionManager {
+	latestLogPath := filepath.Join(memoryBasePath, "chat", "session-latest.log")
+	
 	return &SessionManager{
 		memoryBasePath: memoryBasePath,
-		logger:         utils.NewLogger("info"), // Default to info level
+		latestLogPath:  latestLogPath,
+		logger:         utils.NewLogger("info"),
 		state: SessionState{
 			IsActive:      false,
 			SessionNumber: 0,
@@ -53,68 +58,44 @@ func NewSessionManager(memoryBasePath string) *SessionManager {
 	}
 }
 
-// AppendToSessionLog appends a message to the current session log
-// Creates daily folder and session log file if they don't exist
+// AppendToSessionLog appends a message to session-latest.log
+// This is the only file that receives new messages during active conversation
 func (sm *SessionManager) AppendToSessionLog(role, content string) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	// Get current date in YYYY-MM-DD format
 	now := time.Now()
-	currentDate := now.Format("2006-01-02")
 
-	// Check if we need to create a new session (new day)
-	if sm.currentDate != currentDate {
-		sm.currentDate = currentDate
-		sm.currentSessionNum = 1
-		sm.currentLogPath = ""
-		
-		// Reset session state for new day
-		sm.state.SessionNumber = 1
-		sm.state.StartTime = now
-		sm.state.MessageCount = 0
-		sm.state.TokenCount = 0
-	}
-
-	// Ensure daily folder exists
-	dailyFolderPath := filepath.Join(sm.memoryBasePath, "chat", currentDate)
-	if err := os.MkdirAll(dailyFolderPath, 0755); err != nil {
-		return fmt.Errorf("failed to create daily folder: %w", err)
-	}
-
-	// Create session log file path if not set
-	if sm.currentLogPath == "" {
-		sm.currentLogPath = filepath.Join(dailyFolderPath, fmt.Sprintf("session-%03d.log", sm.currentSessionNum))
-		
-		sm.logger.InfoWithComponent("SessionManager", "Creating new session log file",
-			"session_number", sm.currentSessionNum,
-			"log_path", sm.currentLogPath,
-		)
-		
-		// Mark session as active when first message is logged
-		if !sm.state.IsActive {
-			sm.state.IsActive = true
-			sm.state.StartTime = now
-			sm.state.SessionNumber = sm.currentSessionNum
-		}
+	// Ensure chat folder exists
+	chatFolderPath := filepath.Join(sm.memoryBasePath, "chat")
+	if err := os.MkdirAll(chatFolderPath, 0755); err != nil {
+		return fmt.Errorf("failed to create chat folder: %w", err)
 	}
 
 	// Format the log entry with timestamp
 	timestamp := now.Format("2006-01-02 15:04:05")
 	logEntry := fmt.Sprintf("[%s] %s: %s\n\n", timestamp, role, content)
 
-	// Append to session log file
-	f, err := os.OpenFile(sm.currentLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	// Append to session-latest.log
+	f, err := os.OpenFile(sm.latestLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to open session log file: %w", err)
+		return fmt.Errorf("failed to open session-latest.log: %w", err)
 	}
 	defer f.Close()
 
 	if _, err := f.WriteString(logEntry); err != nil {
-		return fmt.Errorf("failed to write to session log: %w", err)
+		return fmt.Errorf("failed to write to session-latest.log: %w", err)
 	}
 
 	// Update session state
+	if !sm.state.IsActive {
+		sm.state.IsActive = true
+		sm.state.StartTime = now
+		sm.logger.InfoWithComponent("SessionManager", "Session started",
+			"start_time", now.Format("2006-01-02 15:04:05"),
+		)
+	}
+	
 	sm.state.LastActivity = now
 	sm.state.MessageCount++
 	// Approximate token count: ~4 characters per token
@@ -123,235 +104,221 @@ func (sm *SessionManager) AppendToSessionLog(role, content string) error {
 	return nil
 }
 
-// GetCurrentSessionNumber returns the current session number
-func (sm *SessionManager) GetCurrentSessionNumber() int {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-	return sm.currentSessionNum
-}
-
-// GetCurrentSessionPath returns the path to the current session log file
-func (sm *SessionManager) GetCurrentSessionPath() string {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-	return sm.currentLogPath
-}
-
-// GetCurrentDate returns the current date in YYYY-MM-DD format
-func (sm *SessionManager) GetCurrentDate() string {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-	return sm.currentDate
-}
-
-// IncrementSession increments the session number and resets the log path
-// This should be called when a session reset occurs
-func (sm *SessionManager) IncrementSession() error {
+// ArchiveLatestSession moves session-latest.log to the appropriate daily folder
+// It determines the date from the first message timestamp in the file
+// Returns the path where the session was archived, or empty string if no session exists
+func (sm *SessionManager) ArchiveLatestSession() (string, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	// Ensure we're on the current date
-	now := time.Now()
-	currentDate := now.Format("2006-01-02")
-
-	if sm.currentDate != currentDate {
-		sm.currentDate = currentDate
-		sm.currentSessionNum = 1
-	} else {
-		sm.currentSessionNum++
+	// Check if session-latest.log exists
+	if _, err := os.Stat(sm.latestLogPath); os.IsNotExist(err) {
+		sm.logger.InfoWithComponent("SessionManager", "No session-latest.log to archive")
+		return "", nil
 	}
 
-	// Reset the log path so it will be created on next append
-	sm.currentLogPath = ""
+	// Read the file to find the first message timestamp
+	firstMessageDate, err := sm.extractFirstMessageDate(sm.latestLogPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to extract first message date: %w", err)
+	}
 
-	return nil
-}
+	if firstMessageDate == "" {
+		sm.logger.WarnWithComponent("SessionManager", "session-latest.log is empty, removing it")
+		if err := os.Remove(sm.latestLogPath); err != nil {
+			return "", fmt.Errorf("failed to remove empty session-latest.log: %w", err)
+		}
+		return "", nil
+	}
 
-// PerformSessionReset clears all in-memory conversation context and starts fresh
-// This is called after scheduled summarization completes at 4:00 AM
-// It increments the session number and prepares for a new session
-func (sm *SessionManager) PerformSessionReset(triggerReason string) error {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
+	// Create daily folder if it doesn't exist
+	dailyFolderPath := filepath.Join(sm.memoryBasePath, "chat", firstMessageDate)
+	if err := os.MkdirAll(dailyFolderPath, 0755); err != nil {
+		return "", fmt.Errorf("failed to create daily folder: %w", err)
+	}
 
-	// Capture session state before reset
-	now := time.Now()
-	currentDate := now.Format("2006-01-02")
-	oldSessionNum := sm.currentSessionNum
-	
-	// Log the session reset operation with comprehensive details
-	sm.logger.InfoWithComponent("SessionManager", "Session reset triggered",
-		"trigger_reason", triggerReason,
-		"session_number_before", oldSessionNum,
-		"date", currentDate,
-		"timestamp", now.Format("2006-01-02 15:04:05"),
+	// Find the next available session number in that folder
+	sessionNum, err := sm.getNextSessionNumber(dailyFolderPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to get next session number: %w", err)
+	}
+
+	// Create destination path
+	destPath := filepath.Join(dailyFolderPath, fmt.Sprintf("session-%03d.log", sessionNum))
+
+	// Move the file
+	if err := os.Rename(sm.latestLogPath, destPath); err != nil {
+		return "", fmt.Errorf("failed to move session-latest.log to %s: %w", destPath, err)
+	}
+
+	sm.logger.InfoWithComponent("SessionManager", "Session archived",
+		"from", sm.latestLogPath,
+		"to", destPath,
+		"date", firstMessageDate,
+		"session_number", sessionNum,
 	)
 
-	// Initialize currentDate if it's empty (first time)
-	if sm.currentDate == "" {
-		sm.currentDate = currentDate
-		sm.logger.InfoWithComponent("SessionManager", "Initializing date for first time",
-			"date", currentDate,
-		)
-	}
+	return destPath, nil
+}
 
-	// Ensure we're on the current date
-	if sm.currentDate != currentDate {
-		sm.currentDate = currentDate
-		sm.currentSessionNum = 1
-		sm.logger.InfoWithComponent("SessionManager", "New day detected, resetting session number to 1",
-			"new_date", currentDate,
-		)
-	} else {
-		// Increment session number for same day
-		// Special case: if session number is 0 (never initialized), start at 1
-		if sm.currentSessionNum == 0 {
-			sm.currentSessionNum = 1
-		} else {
-			sm.currentSessionNum++
+// extractFirstMessageDate reads the first line of a log file and extracts the date
+// Returns date in YYYY-MM-DD format, or empty string if file is empty or invalid
+func (sm *SessionManager) extractFirstMessageDate(logPath string) (string, error) {
+	file, err := os.Open(logPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open log file: %w", err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// Look for timestamp pattern: [YYYY-MM-DD HH:MM:SS]
+		if strings.HasPrefix(line, "[") && len(line) > 20 {
+			// Extract date part: [2026-03-03 19:38:48]
+			timestampEnd := strings.Index(line, "]")
+			if timestampEnd > 0 {
+				timestamp := line[1:timestampEnd]
+				// Extract just the date part (YYYY-MM-DD)
+				if len(timestamp) >= 10 {
+					return timestamp[:10], nil
+				}
+			}
 		}
 	}
 
-	// Clear the current log path to start fresh
-	// This ensures the next message will create a new session log file
-	sm.currentLogPath = ""
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("error reading log file: %w", err)
+	}
 
-	// Update session state
+	return "", nil // Empty file
+}
+
+// getNextSessionNumber finds the next available session number in a daily folder
+// Returns 1 if no sessions exist, otherwise returns max + 1
+func (sm *SessionManager) getNextSessionNumber(dailyFolderPath string) (int, error) {
+	entries, err := os.ReadDir(dailyFolderPath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read daily folder: %w", err)
+	}
+
+	maxSessionNum := 0
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		// Look for session-NNN.log files
+		name := entry.Name()
+		if strings.HasPrefix(name, "session-") && strings.HasSuffix(name, ".log") {
+			// Extract number from session-NNN.log
+			var num int
+			if _, err := fmt.Sscanf(name, "session-%d.log", &num); err == nil {
+				if num > maxSessionNum {
+					maxSessionNum = num
+				}
+			}
+		}
+	}
+
+	return maxSessionNum + 1, nil
+}
+
+// PerformManualSessionReset handles user-initiated /reset command
+// Archives session-latest.log to appropriate daily folder WITHOUT generating summaries
+// Summaries are only generated during scheduled maintenance
+func (sm *SessionManager) PerformManualSessionReset() error {
+	sm.logger.InfoWithComponent("SessionManager", "Manual session reset initiated")
+
+	// Archive the current session
+	archivedPath, err := sm.ArchiveLatestSession()
+	if err != nil {
+		return fmt.Errorf("failed to archive session: %w", err)
+	}
+
+	if archivedPath == "" {
+		sm.logger.InfoWithComponent("SessionManager", "No active session to archive")
+	} else {
+		sm.logger.InfoWithComponent("SessionManager", "Session archived successfully",
+			"archived_path", archivedPath,
+		)
+	}
+
+	// Reset session state
+	sm.mu.Lock()
 	sm.state.IsActive = false
-	sm.state.SessionNumber = sm.currentSessionNum
-	sm.state.StartTime = time.Time{} // Will be set on next message
-	sm.state.LastActivity = now
+	sm.state.SessionNumber = 0
+	sm.state.StartTime = time.Time{}
 	sm.state.MessageCount = 0
 	sm.state.TokenCount = 0
 	sm.state.HasBeenReset = true
-	sm.state.LastResetTime = now
-	sm.state.LastResetType = triggerReason
+	sm.state.LastResetTime = time.Now()
+	sm.state.LastResetType = "manual"
+	sm.mu.Unlock()
 
-	// Log completion with new session number
-	sm.logger.InfoWithComponent("SessionManager", "Session reset complete",
-		"trigger_reason", triggerReason,
-		"session_number_before", oldSessionNum,
-		"session_number_after", sm.currentSessionNum,
-		"timestamp", now.Format("2006-01-02 15:04:05"),
-	)
+	sm.logger.InfoWithComponent("SessionManager", "Manual session reset complete")
 
 	return nil
 }
 
-// PerformManualSessionReset handles user-initiated or agent-initiated session resets
-// It triggers immediate summarization, topic extraction, and then performs session reset
-// This method coordinates with SummaryManager to generate session summary and extract topics
-func (sm *SessionManager) PerformManualSessionReset(summaryManager SummaryManagerInterface) error {
-	sm.mu.RLock()
-	sessionNum := sm.currentSessionNum
-	currentDate := sm.currentDate
-	logPath := sm.currentLogPath
-	messageCount := sm.state.MessageCount
-	isActive := sm.state.IsActive
-	sm.mu.RUnlock()
+// PerformScheduledSessionReset handles scheduled 4:00 AM maintenance reset
+// Archives session-latest.log and returns the date folder that needs summarization
+// The caller (scheduler) is responsible for:
+// 1. Sending maintenance message to Telegram
+// 2. Calling GenerateDailySummary for the returned date
+// 3. Calling topic extraction
+func (sm *SessionManager) PerformScheduledSessionReset() (string, error) {
+	sm.logger.InfoWithComponent("SessionManager", "Scheduled session reset initiated")
 
-	// Check if there's an active session to summarize
-	// Session is considered empty if:
-	// 1. Session number is 0 (never initialized)
-	// 2. No log path exists (no messages written)
-	// 3. Message count is 0
-	// 4. Session is not marked as active
-	if sessionNum == 0 || logPath == "" || messageCount == 0 || !isActive {
-		sm.logger.InfoWithComponent("SessionManager", "No active session to summarize, performing simple reset",
-			"session_number", sessionNum,
-			"log_path", logPath,
-			"message_count", messageCount,
-			"is_active", isActive,
-		)
-		// Just perform a simple reset without summarization
-		return sm.PerformSessionReset("manual_reset")
-	}
-
-	// Capture session state before reset
-	now := time.Now()
-
-	// Log the manual reset initiation
-	sm.logger.InfoWithComponent("SessionManager", "Manual session reset initiated",
-		"session_number", sessionNum,
-		"date", currentDate,
-		"timestamp", now.Format("2006-01-02 15:04:05"),
-	)
-
-	// Step 1: Generate session summary
-	sm.logger.InfoWithComponent("SessionManager", "Generating session summary for manual reset",
-		"session_number", sessionNum,
-	)
-	
-	if err := summaryManager.GenerateSessionSummary(); err != nil {
-		sm.logger.ErrorWithDetails("SessionManager", "Failed to generate session summary during manual reset", err,
-			"session_number", sessionNum,
-			"date", currentDate,
-		)
-		return fmt.Errorf("failed to generate session summary during manual reset: %w", err)
-	}
-
-	sm.logger.InfoWithComponent("SessionManager", "Session summary generated successfully",
-		"session_number", sessionNum,
-	)
-
-	// Step 2: Perform topic extraction from the session summary
-	dailyFolderPath := filepath.Join(sm.memoryBasePath, "chat", currentDate)
-	summaryPath := filepath.Join(dailyFolderPath, fmt.Sprintf("session-%03d-summary.md", sessionNum))
-
-	sm.logger.InfoWithComponent("SessionManager", "Extracting topics from session summary",
-		"session_number", sessionNum,
-		"summary_path", summaryPath,
-	)
-
-	// Read the generated summary
-	summaryContent, err := os.ReadFile(summaryPath)
+	// Archive the current session
+	archivedPath, err := sm.ArchiveLatestSession()
 	if err != nil {
-		sm.logger.ErrorWithDetails("SessionManager", "Failed to read session summary for topic extraction", err,
-			"session_number", sessionNum,
-			"summary_path", summaryPath,
-		)
-		return fmt.Errorf("failed to read session summary for topic extraction: %w", err)
+		return "", fmt.Errorf("failed to archive session: %w", err)
 	}
 
-	// Extract topics from the summary
-	if err := summaryManager.ExtractTopicsFromContent(string(summaryContent)); err != nil {
-		// Log the error but don't fail the reset - topic extraction is not critical
-		sm.logger.WarnWithComponent("SessionManager", "Topic extraction failed during manual reset",
-			"session_number", sessionNum,
-			"error", err.Error(),
+	var dateToSummarize string
+	if archivedPath != "" {
+		// Extract date from archived path: memory/chat/2026-03-03/session-001.log
+		parts := strings.Split(archivedPath, string(filepath.Separator))
+		for i, part := range parts {
+			if part == "chat" && i+1 < len(parts) {
+				dateToSummarize = parts[i+1]
+				break
+			}
+		}
+		
+		sm.logger.InfoWithComponent("SessionManager", "Session archived successfully",
+			"archived_path", archivedPath,
+			"date_to_summarize", dateToSummarize,
 		)
 	} else {
-		sm.logger.InfoWithComponent("SessionManager", "Topic extraction completed successfully",
-			"session_number", sessionNum,
-		)
+		sm.logger.InfoWithComponent("SessionManager", "No active session to archive")
 	}
 
-	// Step 3: Perform the actual session reset
-	sm.logger.InfoWithComponent("SessionManager", "Performing session reset after manual reset operations",
-		"session_number_before", sessionNum,
-	)
-	
-	if err := sm.PerformSessionReset("manual_reset"); err != nil {
-		sm.logger.ErrorWithDetails("SessionManager", "Failed to perform session reset", err,
-			"session_number", sessionNum,
-		)
-		return fmt.Errorf("failed to perform session reset: %w", err)
-	}
+	// Reset session state
+	sm.mu.Lock()
+	sm.state.IsActive = false
+	sm.state.SessionNumber = 0
+	sm.state.StartTime = time.Time{}
+	sm.state.MessageCount = 0
+	sm.state.TokenCount = 0
+	sm.state.HasBeenReset = true
+	sm.state.LastResetTime = time.Now()
+	sm.state.LastResetType = "scheduled"
+	sm.mu.Unlock()
 
-	sm.logger.InfoWithComponent("SessionManager", "Manual session reset complete",
-		"session_number_before", sessionNum,
-		"session_number_after", sm.GetCurrentSessionNumber(),
-		"timestamp", time.Now().Format("2006-01-02 15:04:05"),
+	sm.logger.InfoWithComponent("SessionManager", "Scheduled session reset complete",
+		"date_to_summarize", dateToSummarize,
 	)
 
-	return nil
+	return dateToSummarize, nil
 }
 
-// SummaryManagerInterface defines the interface for summary operations needed by SessionManager
-// This avoids circular dependencies between SessionManager and SummaryManager
-type SummaryManagerInterface interface {
-	GenerateSessionSummary() error
-	ExtractTopicsFromContent(content string) error
+// GetCurrentSessionPath returns the path to session-latest.log
+func (sm *SessionManager) GetCurrentSessionPath() string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.latestLogPath
 }
 
 // GetSessionState returns a copy of the current session state
@@ -408,4 +375,44 @@ func (sm *SessionManager) GetLastResetInfo() (time.Time, string) {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 	return sm.state.LastResetTime, sm.state.LastResetType
+}
+
+// DEPRECATED METHODS - Kept for backward compatibility, will be removed in future versions
+
+// GetCurrentSessionNumber is deprecated - session numbers are only assigned during archival
+func (sm *SessionManager) GetCurrentSessionNumber() int {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.state.SessionNumber
+}
+
+// GetCurrentDate is deprecated - dates are determined from message timestamps during archival
+func (sm *SessionManager) GetCurrentDate() string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	if sm.state.StartTime.IsZero() {
+		return ""
+	}
+	return sm.state.StartTime.Format("2006-01-02")
+}
+
+// IncrementSession is deprecated - session numbering is handled automatically during archival
+func (sm *SessionManager) IncrementSession() error {
+	sm.logger.WarnWithComponent("SessionManager", "IncrementSession is deprecated and does nothing")
+	return nil
+}
+
+// PerformSessionReset is deprecated - use PerformManualSessionReset or PerformScheduledSessionReset
+func (sm *SessionManager) PerformSessionReset(triggerReason string) error {
+	sm.logger.WarnWithComponent("SessionManager", "PerformSessionReset is deprecated",
+		"trigger_reason", triggerReason,
+		"use_instead", "PerformManualSessionReset or PerformScheduledSessionReset",
+	)
+	
+	if triggerReason == "scheduled" || triggerReason == "scheduled_reset" {
+		_, err := sm.PerformScheduledSessionReset()
+		return err
+	}
+	
+	return sm.PerformManualSessionReset()
 }

@@ -52,6 +52,17 @@ type SessionLogger interface {
 	AppendToSessionLog(role, content string) error
 }
 
+// MemorySessionManager defines the interface for session management operations
+type MemorySessionManager interface {
+	PerformScheduledSessionReset() (string, error) // Returns date folder to summarize
+}
+
+// SummaryManager defines the interface for summary generation operations
+type SummaryManager interface {
+	GenerateDailySummary(date time.Time) error
+	ExtractTopicsFromContent(content string) error
+}
+
 // HistoryEntry represents a single execution history entry
 type HistoryEntry struct {
 	Timestamp           time.Time `json:"timestamp"`
@@ -68,16 +79,19 @@ type HistoryEntry struct {
 
 // CronScheduler manages scheduled tasks using cron expressions
 type CronScheduler struct {
-	cron           *cron.Cron
-	jobs           map[string]*JobInfo
-	cronIDs        map[string]cron.EntryID
-	configPath     string
-	historyPath    string
-	history        []HistoryEntry
-	mu             sync.RWMutex
-	logger         *log.Logger
-	telegramSender TelegramSender // For sending reminder messages
-	sessionLogger  SessionLogger  // For logging cron messages to session logs
+	cron                 *cron.Cron
+	jobs                 map[string]*JobInfo
+	cronIDs              map[string]cron.EntryID
+	configPath           string
+	historyPath          string
+	history              []HistoryEntry
+	mu                   sync.RWMutex
+	logger               *log.Logger
+	telegramSender       TelegramSender       // For sending reminder messages
+	sessionLogger        SessionLogger        // For logging cron messages to session logs
+	memorySessionManager MemorySessionManager // For session reset operations
+	summaryManager       SummaryManager       // For daily summary generation
+	maintenanceChatID    int64                // Chat ID to send maintenance messages to
 }
 
 // NewCronScheduler creates a new CronScheduler instance
@@ -91,15 +105,18 @@ func NewCronScheduler(configPath string, logger *log.Logger) *CronScheduler {
 	historyPath := filepath.Join(configDir, "cron_history.json")
 
 	return &CronScheduler{
-		cron:           cron.New(),
-		jobs:           make(map[string]*JobInfo),
-		cronIDs:        make(map[string]cron.EntryID),
-		configPath:     configPath,
-		historyPath:    historyPath,
-		history:        make([]HistoryEntry, 0),
-		logger:         logger,
-		telegramSender: nil, // Will be set via SetTelegramSender
-		sessionLogger:  nil, // Will be set via SetSessionLogger
+		cron:                 cron.New(),
+		jobs:                 make(map[string]*JobInfo),
+		cronIDs:              make(map[string]cron.EntryID),
+		configPath:           configPath,
+		historyPath:          historyPath,
+		history:              make([]HistoryEntry, 0),
+		logger:               logger,
+		telegramSender:       nil, // Will be set via SetTelegramSender
+		sessionLogger:        nil, // Will be set via SetSessionLogger
+		memorySessionManager: nil, // Will be set via SetMemorySessionManager
+		summaryManager:       nil, // Will be set via SetSummaryManager
+		maintenanceChatID:    0,   // Will be set via SetMaintenanceChatID
 	}
 }
 
@@ -115,6 +132,27 @@ func (s *CronScheduler) SetSessionLogger(logger SessionLogger) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sessionLogger = logger
+}
+
+// SetMemorySessionManager sets the memory session manager for session reset operations
+func (s *CronScheduler) SetMemorySessionManager(manager MemorySessionManager) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.memorySessionManager = manager
+}
+
+// SetSummaryManager sets the summary manager for daily summary generation
+func (s *CronScheduler) SetSummaryManager(manager SummaryManager) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.summaryManager = manager
+}
+
+// SetMaintenanceChatID sets the chat ID to send maintenance messages to
+func (s *CronScheduler) SetMaintenanceChatID(chatID int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.maintenanceChatID = chatID
 }
 
 // Start initializes the cron scheduler and begins executing scheduled jobs
@@ -557,9 +595,81 @@ func (s *CronScheduler) executeQuarterlySummary() error {
 }
 
 func (s *CronScheduler) executeSessionReset() error {
-	// TODO: Call Memory Manager's PerformSessionReset method
-	s.logger.Println("[PLACEHOLDER] Would clear all in-memory conversation context")
-	s.logger.Println("[PLACEHOLDER] Would start fresh empty session for next conversation")
+	s.logger.Println("Executing scheduled session reset...")
+	
+	// Step 1: Send maintenance message to Telegram (if configured)
+	if s.telegramSender != nil && s.maintenanceChatID != 0 {
+		maintenanceMsg := "🔧 <b>Probíhá denní údržba...</b>\n\nGeneruji souhrn včerejšího dne a resetuji session. Chvilku to potrvá."
+		if err := s.telegramSender.SendMessage(s.maintenanceChatID, maintenanceMsg); err != nil {
+			s.logger.Printf("Warning: Failed to send maintenance message: %v", err)
+			// Continue anyway - this is not critical
+		} else {
+			s.logger.Println("Maintenance message sent to Telegram")
+		}
+	}
+	
+	// Step 2: Perform scheduled session reset (archives session-latest.log)
+	if s.memorySessionManager == nil {
+		return fmt.Errorf("memory session manager not configured")
+	}
+	
+	dateToSummarize, err := s.memorySessionManager.PerformScheduledSessionReset()
+	if err != nil {
+		return fmt.Errorf("failed to perform scheduled session reset: %w", err)
+	}
+	
+	s.logger.Printf("Session reset complete. Date to summarize: %s", dateToSummarize)
+	
+	// Step 3: Generate daily summary if there's a date to summarize
+	if dateToSummarize != "" && s.summaryManager != nil {
+		s.logger.Printf("Generating daily summary for %s...", dateToSummarize)
+		
+		// Parse the date string
+		date, err := time.Parse("2006-01-02", dateToSummarize)
+		if err != nil {
+			return fmt.Errorf("failed to parse date %s: %w", dateToSummarize, err)
+		}
+		
+		// Generate daily summary
+		if err := s.summaryManager.GenerateDailySummary(date); err != nil {
+			return fmt.Errorf("failed to generate daily summary: %w", err)
+		}
+		
+		s.logger.Printf("Daily summary generated successfully for %s", dateToSummarize)
+		
+		// Step 4: Extract topics from the daily summary
+		s.logger.Println("Extracting topics from daily summary...")
+		
+		// Read the generated summary
+		summaryPath := fmt.Sprintf("memory/chat/%s/daily-summary.md", dateToSummarize)
+		summaryContent, err := os.ReadFile(summaryPath)
+		if err != nil {
+			s.logger.Printf("Warning: Failed to read daily summary for topic extraction: %v", err)
+			// Continue anyway - topic extraction is not critical
+		} else {
+			if err := s.summaryManager.ExtractTopicsFromContent(string(summaryContent)); err != nil {
+				s.logger.Printf("Warning: Topic extraction failed: %v", err)
+				// Continue anyway - topic extraction is not critical
+			} else {
+				s.logger.Println("Topic extraction completed successfully")
+			}
+		}
+	} else {
+		s.logger.Println("No date to summarize (no active session was archived)")
+	}
+	
+	// Step 5: Send completion message to Telegram (if configured)
+	if s.telegramSender != nil && s.maintenanceChatID != 0 {
+		completionMsg := "✅ <b>Denní údržba dokončena!</b>\n\nSession byla resetována a jsem připraven na nový den."
+		if err := s.telegramSender.SendMessage(s.maintenanceChatID, completionMsg); err != nil {
+			s.logger.Printf("Warning: Failed to send completion message: %v", err)
+			// Continue anyway - this is not critical
+		} else {
+			s.logger.Println("Completion message sent to Telegram")
+		}
+	}
+	
+	s.logger.Println("Scheduled session reset completed successfully")
 	return nil
 }
 
