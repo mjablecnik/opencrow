@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"simple-telegram-chatbot/internal/agent"
@@ -595,3 +596,298 @@ func (c *OpenRouterClient) handleToolCalls(ctx context.Context, chatID int64, to
 
 	return generatedText, nil
 }
+
+// ExtractTopics extracts domain-specific topics from conversation content using LLM
+// Returns a list of TopicExtraction with ShouldWrite=true if relevant domain knowledge is found
+// Retries up to 3 times with exponential backoff on failures
+func (c *OpenRouterClient) ExtractTopics(content string, existingTopics []string) ([]TopicExtraction, error) {
+	c.logger.InfoWithComponent("OpenRouterClient", "Extracting topics from content",
+		"contentLength", len(content),
+		"existingTopicsCount", len(existingTopics))
+
+	// Build the prompt for topic extraction
+	prompt := c.buildTopicExtractionPrompt(content, existingTopics)
+
+	// Retry logic with exponential backoff
+	maxRetries := 3
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			// Exponential backoff: 1s, 2s, 4s
+			backoffDuration := time.Duration(1<<uint(attempt-2)) * time.Second
+			c.logger.InfoWithComponent("OpenRouterClient", "Retrying topic extraction",
+				"attempt", attempt,
+				"backoff", backoffDuration)
+			time.Sleep(backoffDuration)
+		}
+
+		// Create context with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+		defer cancel()
+
+		// Build request payload
+		messages := []Message{
+			{
+				Role:    "system",
+				Content: "You are an expert at analyzing conversations and extracting domain-specific knowledge. Your task is to identify relevant topics and extract meaningful insights.",
+			},
+			{
+				Role:    "user",
+				Content: prompt,
+			},
+		}
+
+		requestPayload := OpenRouterRequest{
+			Model:    c.modelName,
+			Messages: messages,
+		}
+
+		// Marshal request to JSON
+		requestBody, err := json.Marshal(requestPayload)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to marshal topic extraction request: %w", err)
+			c.logger.ErrorWithComponent("OpenRouterClient", "Failed to marshal request", "error", err)
+			continue
+		}
+
+		// Create HTTP request
+		req, err := http.NewRequestWithContext(ctx, "POST", openRouterAPIURL, bytes.NewBuffer(requestBody))
+		if err != nil {
+			lastErr = fmt.Errorf("failed to create HTTP request: %w", err)
+			c.logger.ErrorWithComponent("OpenRouterClient", "Failed to create HTTP request", "error", err)
+			continue
+		}
+
+		// Set headers
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+		req.Header.Set("HTTP-Referer", "https://github.com/simple-telegram-chatbot")
+		req.Header.Set("X-Title", "Simple Telegram Chatbot")
+
+		// Send request
+		startTime := time.Now()
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("HTTP request failed: %w", err)
+			c.logger.ErrorWithComponent("OpenRouterClient", "HTTP request failed", "error", err, "attempt", attempt)
+			continue
+		}
+
+		duration := time.Since(startTime)
+		c.logger.DebugWithComponent("OpenRouterClient", "Topic extraction API response received",
+			"statusCode", resp.StatusCode,
+			"duration", duration,
+			"attempt", attempt)
+
+		// Read response body
+		responseBody, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("failed to read response body: %w", err)
+			c.logger.ErrorWithComponent("OpenRouterClient", "Failed to read response body", "error", err)
+			continue
+		}
+
+		// Check for HTTP errors
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("API returned error status: %d", resp.StatusCode)
+			c.logger.ErrorWithComponent("OpenRouterClient", "API returned error status",
+				"statusCode", resp.StatusCode,
+				"body", string(responseBody))
+			continue
+		}
+
+		// Parse response
+		var apiResponse OpenRouterResponse
+		if err := json.Unmarshal(responseBody, &apiResponse); err != nil {
+			lastErr = fmt.Errorf("failed to parse API response: %w", err)
+			c.logger.ErrorWithComponent("OpenRouterClient", "Failed to parse API response", "error", err)
+			continue
+		}
+
+		// Check for API error in response
+		if apiResponse.Error != nil {
+			lastErr = fmt.Errorf("API error: %s", apiResponse.Error.Message)
+			c.logger.ErrorWithComponent("OpenRouterClient", "API returned error",
+				"errorType", apiResponse.Error.Type,
+				"errorMessage", apiResponse.Error.Message)
+			continue
+		}
+
+		// Extract generated text
+		generatedText, err := c.extractGeneratedText(apiResponse)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to extract generated text: %w", err)
+			c.logger.ErrorWithComponent("OpenRouterClient", "Failed to extract generated text", "error", err)
+			continue
+		}
+
+		// Parse topics from the response
+		topics, err := c.parseTopicExtractionResponse(generatedText)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to parse topic extraction response: %w", err)
+			c.logger.ErrorWithComponent("OpenRouterClient", "Failed to parse topic extraction response", "error", err)
+			continue
+		}
+
+		c.logger.InfoWithComponent("OpenRouterClient", "Successfully extracted topics",
+			"topicsCount", len(topics),
+			"attempt", attempt,
+			"tokensUsed", apiResponse.Usage.TotalTokens)
+
+		return topics, nil
+	}
+
+	// All retries failed
+	c.logger.ErrorWithComponent("OpenRouterClient", "All topic extraction retries failed",
+		"maxRetries", maxRetries,
+		"lastError", lastErr)
+
+	// Return empty list instead of error to allow graceful degradation
+	return []TopicExtraction{}, nil
+}
+
+// buildTopicExtractionPrompt creates the prompt for topic extraction
+func (c *OpenRouterClient) buildTopicExtractionPrompt(content string, existingTopics []string) string {
+	var prompt strings.Builder
+
+	prompt.WriteString("Analyze the following conversation content and extract domain-specific knowledge that should be preserved.\n\n")
+	prompt.WriteString("**Task:** Identify relevant topics and extract meaningful insights, lessons learned, preferences, or important information.\n\n")
+	prompt.WriteString("**Supported Domains:** Programming, Psychology, Food, Sport-Health, Politics, and other relevant domains.\n\n")
+
+	if len(existingTopics) > 0 {
+		prompt.WriteString("**Existing Topics:** ")
+		prompt.WriteString(strings.Join(existingTopics, ", "))
+		prompt.WriteString("\n\n")
+		prompt.WriteString("You can update existing topics or create new ones as needed.\n\n")
+	}
+
+	prompt.WriteString("**Instructions:**\n")
+	prompt.WriteString("1. Identify if there is any relevant domain-specific knowledge worth preserving\n")
+	prompt.WriteString("2. If NO relevant domain knowledge is found, respond with: NO_TOPICS_FOUND\n")
+	prompt.WriteString("3. If relevant knowledge IS found, extract topics in the following JSON format:\n\n")
+	prompt.WriteString("```json\n")
+	prompt.WriteString("[\n")
+	prompt.WriteString("  {\n")
+	prompt.WriteString("    \"topic_name\": \"TopicName\",\n")
+	prompt.WriteString("    \"content\": \"Detailed content about this topic...\",\n")
+	prompt.WriteString("    \"confidence\": 0.85,\n")
+	prompt.WriteString("    \"should_write\": true\n")
+	prompt.WriteString("  }\n")
+	prompt.WriteString("]\n")
+	prompt.WriteString("```\n\n")
+	prompt.WriteString("**Guidelines:**\n")
+	prompt.WriteString("- topic_name: Use descriptive names like \"Programming\", \"Docker\", \"Psychology\", \"Food-Preferences\"\n")
+	prompt.WriteString("- content: Extract specific insights, code examples, preferences, lessons learned\n")
+	prompt.WriteString("- confidence: 0.0 to 1.0 (how confident you are this is relevant domain knowledge)\n")
+	prompt.WriteString("- should_write: true only if this contains meaningful domain knowledge worth preserving\n\n")
+	prompt.WriteString("**Conversation Content:**\n\n")
+	prompt.WriteString(content)
+	prompt.WriteString("\n\n")
+	prompt.WriteString("**Response:** Provide either NO_TOPICS_FOUND or the JSON array of topics.\n")
+
+	return prompt.String()
+}
+
+// parseTopicExtractionResponse parses the LLM response and extracts topics
+func (c *OpenRouterClient) parseTopicExtractionResponse(response string) ([]TopicExtraction, error) {
+	// Check if no topics were found
+	if strings.Contains(strings.ToUpper(response), "NO_TOPICS_FOUND") {
+		c.logger.InfoWithComponent("OpenRouterClient", "No relevant domain knowledge found in content")
+		return []TopicExtraction{}, nil
+	}
+
+	// Try to extract JSON from the response
+	// The response might contain markdown code blocks or plain JSON
+	jsonStr := c.extractJSONFromResponse(response)
+	if jsonStr == "" {
+		c.logger.WarnWithComponent("OpenRouterClient", "No JSON found in topic extraction response",
+			"response", response)
+		return []TopicExtraction{}, nil
+	}
+
+	// Parse JSON array
+	var rawTopics []struct {
+		TopicName   string  `json:"topic_name"`
+		Content     string  `json:"content"`
+		Confidence  float64 `json:"confidence"`
+		ShouldWrite bool    `json:"should_write"`
+	}
+
+	if err := json.Unmarshal([]byte(jsonStr), &rawTopics); err != nil {
+		c.logger.ErrorWithComponent("OpenRouterClient", "Failed to parse topic JSON",
+			"error", err,
+			"json", jsonStr)
+		return nil, fmt.Errorf("failed to parse topic JSON: %w", err)
+	}
+
+	// Convert to TopicExtraction structs
+	topics := make([]TopicExtraction, 0, len(rawTopics))
+	for _, raw := range rawTopics {
+		topics = append(topics, TopicExtraction{
+			TopicName:   raw.TopicName,
+			Content:     raw.Content,
+			Confidence:  raw.Confidence,
+			ShouldWrite: raw.ShouldWrite,
+		})
+	}
+
+	return topics, nil
+}
+
+// extractJSONFromResponse extracts JSON content from a response that might contain markdown
+func (c *OpenRouterClient) extractJSONFromResponse(response string) string {
+	// Try to find JSON in markdown code blocks
+	jsonBlockStart := strings.Index(response, "```json")
+	if jsonBlockStart != -1 {
+		jsonBlockStart += 7 // Move past ```json
+		jsonBlockEnd := strings.Index(response[jsonBlockStart:], "```")
+		if jsonBlockEnd != -1 {
+			return strings.TrimSpace(response[jsonBlockStart : jsonBlockStart+jsonBlockEnd])
+		}
+	}
+
+	// Try to find JSON in plain code blocks
+	codeBlockStart := strings.Index(response, "```")
+	if codeBlockStart != -1 {
+		codeBlockStart += 3 // Move past ```
+		codeBlockEnd := strings.Index(response[codeBlockStart:], "```")
+		if codeBlockEnd != -1 {
+			content := strings.TrimSpace(response[codeBlockStart : codeBlockStart+codeBlockEnd])
+			// Check if it looks like JSON
+			if strings.HasPrefix(content, "[") || strings.HasPrefix(content, "{") {
+				return content
+			}
+		}
+	}
+
+	// Try to find raw JSON array
+	arrayStart := strings.Index(response, "[")
+	if arrayStart != -1 {
+		// Find the matching closing bracket
+		bracketCount := 0
+		for i := arrayStart; i < len(response); i++ {
+			if response[i] == '[' {
+				bracketCount++
+			} else if response[i] == ']' {
+				bracketCount--
+				if bracketCount == 0 {
+					return strings.TrimSpace(response[arrayStart : i+1])
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
+// TopicExtraction represents extracted topic information
+// This struct is defined here to match the memory package's interface
+type TopicExtraction struct {
+	TopicName   string
+	Content     string
+	Confidence  float64
+	ShouldWrite bool
+}
+

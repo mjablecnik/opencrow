@@ -12,7 +12,8 @@ type SummaryManager struct {
 	memoryBasePath    string
 	sessionManager    *SessionManager
 	tokenThreshold    int
-	llmClient         LLMClient // Interface for LLM integration
+	llmClient         LLMClient      // Interface for LLM integration
+	topicManager      *TopicManager  // Topic management for extraction
 }
 
 // LLMClient interface for generating summaries using LLM
@@ -30,12 +31,13 @@ type TopicExtraction struct {
 }
 
 // NewSummaryManager creates a new summary manager
-func NewSummaryManager(memoryBasePath string, sessionManager *SessionManager, tokenThreshold int, llmClient LLMClient) *SummaryManager {
+func NewSummaryManager(memoryBasePath string, sessionManager *SessionManager, tokenThreshold int, llmClient LLMClient, topicManager *TopicManager) *SummaryManager {
 	return &SummaryManager{
 		memoryBasePath: memoryBasePath,
 		sessionManager: sessionManager,
 		tokenThreshold: tokenThreshold,
 		llmClient:      llmClient,
+		topicManager:   topicManager,
 	}
 }
 
@@ -230,8 +232,18 @@ func (sm *SummaryManager) ExtractTopicsFromContent(content string) error {
 		return fmt.Errorf("LLM client not configured")
 	}
 
-	// Get list of existing topics (empty for now, will be implemented with topic management)
+	if sm.topicManager == nil {
+		return fmt.Errorf("topic manager not configured")
+	}
+
+	// Get list of existing topics
 	existingTopics := []string{}
+	topicInfos, err := sm.topicManager.ListTopics()
+	if err == nil {
+		for _, info := range topicInfos {
+			existingTopics = append(existingTopics, info.Name)
+		}
+	}
 
 	// Extract topics using LLM
 	topics, err := sm.llmClient.ExtractTopics(content, existingTopics)
@@ -239,36 +251,11 @@ func (sm *SummaryManager) ExtractTopicsFromContent(content string) error {
 		return fmt.Errorf("failed to extract topics: %w", err)
 	}
 
-	// Log the extraction results
-	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	if len(topics) == 0 {
-		fmt.Printf("[%s] Topic extraction completed: no relevant domain knowledge found\n", timestamp)
-		return nil
+	// Use TopicManager to write topics to files
+	// TopicManager.ExtractTopics handles filtering, logging, and file operations
+	if err := sm.topicManager.ExtractTopics(topics); err != nil {
+		return fmt.Errorf("failed to write topics: %w", err)
 	}
-
-	// Count topics that should be written
-	topicsToWrite := 0
-	for _, topic := range topics {
-		if topic.ShouldWrite {
-			topicsToWrite++
-		}
-	}
-
-	if topicsToWrite == 0 {
-		fmt.Printf("[%s] Topic extraction completed: no relevant domain knowledge found\n", timestamp)
-		return nil
-	}
-
-	// Log topics identified
-	fmt.Printf("[%s] Topic extraction completed: %d topics identified\n", timestamp, topicsToWrite)
-	for _, topic := range topics {
-		if topic.ShouldWrite {
-			fmt.Printf("[%s] - Topic: %s (confidence: %.2f)\n", timestamp, topic.TopicName, topic.Confidence)
-		}
-	}
-
-	// TODO: Implement actual topic file writing when topic management is implemented
-	// For now, we just log the topics that would be written
 
 	return nil
 }
