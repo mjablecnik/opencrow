@@ -22,8 +22,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bot ./cmd/bot
 # Runtime stage
 FROM alpine:latest
 
-# Install runtime dependencies including curl for web scraping
-RUN apk --no-cache add ca-certificates tzdata curl
+# Install runtime dependencies
+# - ca-certificates: for HTTPS connections
+# - tzdata: for timezone support
+# - curl: for web scraping
+# - pcre-tools (pcregrep): for Perl-compatible regex support
+RUN apk --no-cache add ca-certificates tzdata curl pcre-tools
 
 # Create non-root user
 RUN addgroup -g 1000 botuser && \
