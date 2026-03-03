@@ -13,6 +13,7 @@ type IdentityFiles struct {
 	Personality string
 	Soul        string
 	User        string
+	Tools       string // Tool usage guidelines
 }
 
 // IdentityContext provides identity content for LLM context
@@ -21,6 +22,7 @@ type IdentityContext struct {
 	Personality string
 	Soul        string
 	User        string
+	Tools       string // Tool usage guidelines
 }
 
 // Agent manages identity files and provides context to the LLM
@@ -76,6 +78,14 @@ func (a *Agent) LoadIdentityFiles() (*IdentityFiles, error) {
 	}
 	files.User = user
 
+	// Read TOOLS.md
+	toolsPath := filepath.Join(a.identityDir, "TOOLS.md")
+	tools, err := utils.ReadFile(toolsPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read TOOLS.md: %w", err)
+	}
+	files.Tools = tools
+
 	a.files = files
 	a.logger.InfoWithComponent("Agent", "Successfully loaded all identity files")
 
@@ -91,6 +101,7 @@ func (a *Agent) ValidateIdentityFiles() error {
 		"PERSONALITY.md",
 		"SOUL.md",
 		"USER.md",
+		"TOOLS.md",
 	}
 
 	missingFiles := []string{}
@@ -122,5 +133,6 @@ func (a *Agent) GetIdentityContext() IdentityContext {
 		Personality: a.files.Personality,
 		Soul:        a.files.Soul,
 		User:        a.files.User,
+		Tools:       a.files.Tools,
 	}
 }

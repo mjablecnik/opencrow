@@ -222,6 +222,10 @@ func (c *OpenRouterClient) buildSystemContext(identityContext agent.IdentityCont
 		systemContext += "# User Context\n\n" + identityContext.User + "\n\n"
 	}
 	
+	if identityContext.Tools != "" {
+		systemContext += "# Tool Usage Guidelines\n\n" + identityContext.Tools + "\n\n"
+	}
+	
 	return systemContext
 }
 
