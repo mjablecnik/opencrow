@@ -18,6 +18,7 @@ type TelegramChannel struct {
 	llmClient            *llm.OpenRouterClient
 	sessionManager       *session.SessionManager
 	memorySessionManager *memory.SessionManager
+	summaryManager       memory.SummaryManagerInterface
 	logger               *utils.Logger
 	updatesChan          tgbotapi.UpdatesChannel
 	stopChan             chan struct{}
@@ -29,6 +30,7 @@ func NewTelegramChannel(
 	llmClient *llm.OpenRouterClient,
 	sessionManager *session.SessionManager,
 	memorySessionManager *memory.SessionManager,
+	summaryManager memory.SummaryManagerInterface,
 	logger *utils.Logger,
 ) (*TelegramChannel, error) {
 	bot, err := tgbotapi.NewBotAPI(botToken)
@@ -43,6 +45,7 @@ func NewTelegramChannel(
 		llmClient:            llmClient,
 		sessionManager:       sessionManager,
 		memorySessionManager: memorySessionManager,
+		summaryManager:       summaryManager,
 		logger:               logger,
 		stopChan:             make(chan struct{}),
 	}, nil
@@ -94,6 +97,12 @@ func (tc *TelegramChannel) HandleMessage(update tgbotapi.Update) error {
 	userMessage := update.Message.Text
 
 	tc.logger.InfoWithComponent("TelegramChannel", "Received message", "chatID", chatID, "message", userMessage)
+
+	// Check for /reset command
+	if userMessage == "/reset" {
+		tc.logger.InfoWithComponent("TelegramChannel", "Processing /reset command", "chatID", chatID)
+		return tc.handleResetCommand(chatID)
+	}
 
 	// Log user message to memory session log
 	if err := tc.memorySessionManager.AppendToSessionLog("User", userMessage); err != nil {
@@ -196,5 +205,37 @@ func (tc *TelegramChannel) Stop() error {
 	tc.bot.StopReceivingUpdates()
 	
 	tc.logger.InfoWithComponent("TelegramChannel", "Telegram bot stopped successfully")
+	return nil
+}
+
+// handleResetCommand handles the /reset command to clear conversation history
+func (tc *TelegramChannel) handleResetCommand(chatID int64) error {
+	tc.logger.InfoWithComponent("TelegramChannel", "Executing session reset", "chatID", chatID)
+
+	// Step 1: Clear in-memory session
+	if err := tc.sessionManager.ClearSession(chatID); err != nil {
+		tc.logger.WarnWithComponent("TelegramChannel", "Failed to clear in-memory session (may not exist)", "chatID", chatID, "error", err)
+		// Continue even if session doesn't exist
+	}
+
+	// Step 2: Perform manual session reset in memory (generates summary and extracts topics)
+	if err := tc.memorySessionManager.PerformManualSessionReset(tc.summaryManager); err != nil {
+		tc.logger.ErrorWithComponent("TelegramChannel", "Failed to perform manual session reset", "chatID", chatID, "error", err)
+		// Send error message to user
+		errorMsg := "Failed to reset session. Please try again."
+		if sendErr := tc.SendMessageWithRetry(chatID, errorMsg, 3); sendErr != nil {
+			tc.logger.ErrorWithComponent("TelegramChannel", "Failed to send error message", "error", sendErr)
+		}
+		return fmt.Errorf("failed to perform manual session reset: %w", err)
+	}
+
+	// Step 3: Send confirmation to user
+	confirmMsg := "<b>History has been reset.</b> How can I help you today?"
+	if err := tc.SendMessageWithRetry(chatID, confirmMsg, 3); err != nil {
+		tc.logger.ErrorWithComponent("TelegramChannel", "Failed to send reset confirmation", "error", err)
+		return fmt.Errorf("failed to send reset confirmation: %w", err)
+	}
+
+	tc.logger.InfoWithComponent("TelegramChannel", "Session reset completed successfully", "chatID", chatID)
 	return nil
 }

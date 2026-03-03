@@ -86,6 +86,11 @@ func (sm *SessionManager) AppendToSessionLog(role, content string) error {
 	if sm.currentLogPath == "" {
 		sm.currentLogPath = filepath.Join(dailyFolderPath, fmt.Sprintf("session-%03d.log", sm.currentSessionNum))
 		
+		sm.logger.InfoWithComponent("SessionManager", "Creating new session log file",
+			"session_number", sm.currentSessionNum,
+			"log_path", sm.currentLogPath,
+		)
+		
 		// Mark session as active when first message is logged
 		if !sm.state.IsActive {
 			sm.state.IsActive = true
@@ -182,6 +187,14 @@ func (sm *SessionManager) PerformSessionReset(triggerReason string) error {
 		"timestamp", now.Format("2006-01-02 15:04:05"),
 	)
 
+	// Initialize currentDate if it's empty (first time)
+	if sm.currentDate == "" {
+		sm.currentDate = currentDate
+		sm.logger.InfoWithComponent("SessionManager", "Initializing date for first time",
+			"date", currentDate,
+		)
+	}
+
 	// Ensure we're on the current date
 	if sm.currentDate != currentDate {
 		sm.currentDate = currentDate
@@ -190,7 +203,13 @@ func (sm *SessionManager) PerformSessionReset(triggerReason string) error {
 			"new_date", currentDate,
 		)
 	} else {
-		sm.currentSessionNum++
+		// Increment session number for same day
+		// Special case: if session number is 0 (never initialized), start at 1
+		if sm.currentSessionNum == 0 {
+			sm.currentSessionNum = 1
+		} else {
+			sm.currentSessionNum++
+		}
 	}
 
 	// Clear the current log path to start fresh
@@ -223,10 +242,33 @@ func (sm *SessionManager) PerformSessionReset(triggerReason string) error {
 // It triggers immediate summarization, topic extraction, and then performs session reset
 // This method coordinates with SummaryManager to generate session summary and extract topics
 func (sm *SessionManager) PerformManualSessionReset(summaryManager SummaryManagerInterface) error {
+	sm.mu.RLock()
+	sessionNum := sm.currentSessionNum
+	currentDate := sm.currentDate
+	logPath := sm.currentLogPath
+	messageCount := sm.state.MessageCount
+	isActive := sm.state.IsActive
+	sm.mu.RUnlock()
+
+	// Check if there's an active session to summarize
+	// Session is considered empty if:
+	// 1. Session number is 0 (never initialized)
+	// 2. No log path exists (no messages written)
+	// 3. Message count is 0
+	// 4. Session is not marked as active
+	if sessionNum == 0 || logPath == "" || messageCount == 0 || !isActive {
+		sm.logger.InfoWithComponent("SessionManager", "No active session to summarize, performing simple reset",
+			"session_number", sessionNum,
+			"log_path", logPath,
+			"message_count", messageCount,
+			"is_active", isActive,
+		)
+		// Just perform a simple reset without summarization
+		return sm.PerformSessionReset("manual_reset")
+	}
+
 	// Capture session state before reset
 	now := time.Now()
-	sessionNum := sm.GetCurrentSessionNumber()
-	currentDate := sm.GetCurrentDate()
 
 	// Log the manual reset initiation
 	sm.logger.InfoWithComponent("SessionManager", "Manual session reset initiated",
