@@ -982,6 +982,85 @@ func (s *CronScheduler) AddJob(name string, schedule string, task func() error) 
 	return nil
 }
 
+// AddReminderJob adds a new recurring reminder job with all required fields set correctly
+func (s *CronScheduler) AddReminderJob(name, schedule, message string, chatID int64, startsAt, expiresAt *time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Check if job already exists
+	if _, exists := s.jobs[name]; exists {
+		return fmt.Errorf("job %s already exists", name)
+	}
+
+	// Validate cron expression
+	if err := s.ValidateCronExpression(schedule); err != nil {
+		return err
+	}
+
+	// Create new reminder job with all fields
+	job := &JobInfo{
+		Name:        name,
+		Schedule:    schedule,
+		TaskType:    "reminder",
+		Message:     message,
+		ChatID:      chatID,
+		StartsAt:    startsAt,
+		ExpiresAt:   expiresAt,
+		Enabled:     true,
+		Status:      JobStatusEnabled,
+		Description: fmt.Sprintf("Recurring reminder: %s", message),
+	}
+
+	s.jobs[name] = job
+
+	// Save jobs
+	if err := s.saveJobsInternal(); err != nil {
+		return fmt.Errorf("failed to save jobs: %w", err)
+	}
+
+	s.logger.Printf("Added recurring reminder job: %s (schedule: %s)", name, schedule)
+	return nil
+}
+
+// AddOneTimeReminderJob adds a new one-time reminder job
+func (s *CronScheduler) AddOneTimeReminderJob(name, schedule string, executeAt time.Time, message string, chatID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Check if job already exists
+	if _, exists := s.jobs[name]; exists {
+		return fmt.Errorf("job %s already exists", name)
+	}
+
+	// Validate cron expression
+	if err := s.ValidateCronExpression(schedule); err != nil {
+		return err
+	}
+
+	// Create new one-time reminder job
+	job := &JobInfo{
+		Name:        name,
+		Schedule:    schedule,
+		ExecuteAt:   &executeAt,
+		TaskType:    "reminder",
+		Message:     message,
+		ChatID:      chatID,
+		Enabled:     true,
+		Status:      JobStatusEnabled,
+		Description: fmt.Sprintf("One-time reminder: %s", message),
+	}
+
+	s.jobs[name] = job
+
+	// Save jobs
+	if err := s.saveJobsInternal(); err != nil {
+		return fmt.Errorf("failed to save jobs: %w", err)
+	}
+
+	s.logger.Printf("Added one-time reminder job: %s (execute at: %s)", name, executeAt.Format(time.RFC3339))
+	return nil
+}
+
 // removeJobWithReason removes a job from the scheduler with a specific deletion reason
 func (s *CronScheduler) removeJobWithReason(name string, reason string) error {
 	s.mu.Lock()

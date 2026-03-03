@@ -354,9 +354,6 @@ func (t *CronManagementTool) CreateRecurringReminder(name, schedule, message str
 		}
 	}
 
-	// Note: chatID can be 0 if not provided by LLM
-	// The scheduler will use the chatID from the message context when executing the reminder
-
 	// Validate cron expression
 	if err := t.scheduler.ValidateCronExpression(schedule); err != nil {
 		return &CronToolResult{
@@ -388,16 +385,16 @@ func (t *CronManagementTool) CreateRecurringReminder(name, schedule, message str
 		}
 	}
 
-	// Create the job (we'll need to add a method to scheduler for this)
-	// For now, we'll use AddJob and then manually update the job info
-	if err := t.scheduler.AddJob(name, schedule, nil); err != nil {
+	// Create the reminder job directly with all required fields
+	// This ensures task_type is set from the beginning
+	if err := t.scheduler.AddReminderJob(name, schedule, message, chatID, startsAt, expiresAt); err != nil {
 		return &CronToolResult{
 			Success: false,
 			Message: fmt.Sprintf("Failed to create reminder: %v", err),
 		}
 	}
 
-	// Get the job and update its fields
+	// Get the job to return details
 	job, err := t.scheduler.GetJob(name)
 	if err != nil {
 		return &CronToolResult{
@@ -406,26 +403,11 @@ func (t *CronManagementTool) CreateRecurringReminder(name, schedule, message str
 		}
 	}
 
-	// Update job fields
-	job.TaskType = "reminder"
-	job.Message = message
-	job.ChatID = chatID
-	job.StartsAt = startsAt
-	job.ExpiresAt = expiresAt
-	job.Description = fmt.Sprintf("Recurring reminder: %s", message)
-
-	// Save the updated configuration
-	if err := t.scheduler.SaveJobs(); err != nil {
-		return &CronToolResult{
-			Success: false,
-			Message: fmt.Sprintf("Failed to save reminder configuration: %v", err),
-		}
-	}
-
 	// Build response data
 	responseData := map[string]interface{}{
 		"name":      job.Name,
 		"schedule":  job.Schedule,
+		"task_type": job.TaskType,
 		"message":   job.Message,
 		"chat_id":   job.ChatID,
 		"enabled":   job.Enabled,
@@ -463,9 +445,6 @@ func (t *CronManagementTool) CreateOneTimeReminder(name string, executeAt time.T
 		}
 	}
 
-	// Note: chatID can be 0 if not provided by LLM
-	// The scheduler will use the chatID from the message context when executing the reminder
-
 	// Validate execute_at is in the future
 	if executeAt.Before(time.Now()) {
 		return &CronToolResult{
@@ -483,15 +462,15 @@ func (t *CronManagementTool) CreateOneTimeReminder(name string, executeAt time.T
 		int(executeAt.Month()),
 	)
 
-	// Add the job
-	if err := t.scheduler.AddJob(name, cronExpr, nil); err != nil {
+	// Create the one-time reminder job directly with all required fields
+	if err := t.scheduler.AddOneTimeReminderJob(name, cronExpr, executeAt, message, chatID); err != nil {
 		return &CronToolResult{
 			Success: false,
 			Message: fmt.Sprintf("Failed to create one-time reminder: %v", err),
 		}
 	}
 
-	// Get the job and update its fields
+	// Get the job to return details
 	job, err := t.scheduler.GetJob(name)
 	if err != nil {
 		return &CronToolResult{
@@ -500,26 +479,12 @@ func (t *CronManagementTool) CreateOneTimeReminder(name string, executeAt time.T
 		}
 	}
 
-	// Update job fields for one-time execution
-	job.TaskType = "reminder"
-	job.Message = message
-	job.ChatID = chatID
-	job.ExecuteAt = &executeAt
-	job.Description = fmt.Sprintf("One-time reminder: %s", message)
-
-	// Save the updated configuration
-	if err := t.scheduler.SaveJobs(); err != nil {
-		return &CronToolResult{
-			Success: false,
-			Message: fmt.Sprintf("Failed to save reminder configuration: %v", err),
-		}
-	}
-
 	return &CronToolResult{
 		Success: true,
 		Message: fmt.Sprintf("One-time reminder '%s' created successfully. Will execute at: %s", name, executeAt.Format(time.RFC3339)),
 		Data: map[string]interface{}{
 			"name":       job.Name,
+			"task_type":  job.TaskType,
 			"execute_at": executeAt.Format(time.RFC3339),
 			"message":    job.Message,
 			"chat_id":    job.ChatID,
