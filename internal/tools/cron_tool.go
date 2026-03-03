@@ -354,12 +354,8 @@ func (t *CronManagementTool) CreateRecurringReminder(name, schedule, message str
 		}
 	}
 
-	if chatID == 0 {
-		return &CronToolResult{
-			Success: false,
-			Message: "Chat ID must be provided",
-		}
-	}
+	// Note: chatID can be 0 if not provided by LLM
+	// The scheduler will use the chatID from the message context when executing the reminder
 
 	// Validate cron expression
 	if err := t.scheduler.ValidateCronExpression(schedule); err != nil {
@@ -467,12 +463,8 @@ func (t *CronManagementTool) CreateOneTimeReminder(name string, executeAt time.T
 		}
 	}
 
-	if chatID == 0 {
-		return &CronToolResult{
-			Success: false,
-			Message: "Chat ID must be provided",
-		}
-	}
+	// Note: chatID can be 0 if not provided by LLM
+	// The scheduler will use the chatID from the message context when executing the reminder
 
 	// Validate execute_at is in the future
 	if executeAt.Before(time.Now()) {
@@ -865,26 +857,126 @@ func (t *CronManagementTool) Execute(params map[string]interface{}) (ToolResult,
 	switch action {
 	case "list":
 		return t.ListJobs().toToolResult(), nil
+		
 	case "get":
 		name, ok := params["name"].(string)
 		if !ok {
 			return ToolResult{Success: false, Error: "missing 'name' parameter"}, fmt.Errorf("missing 'name' parameter")
 		}
 		return t.GetJobInfo(name).toToolResult(), nil
+		
 	case "add":
 		name, _ := params["name"].(string)
 		schedule, _ := params["schedule"].(string)
 		taskType, _ := params["task_type"].(string)
 		return t.AddJob(name, schedule, taskType).toToolResult(), nil
+		
 	case "remove":
 		name, _ := params["name"].(string)
 		return t.RemoveJob(name).toToolResult(), nil
+		
 	case "enable":
 		name, _ := params["name"].(string)
 		return t.EnableJob(name).toToolResult(), nil
+		
 	case "disable":
 		name, _ := params["name"].(string)
 		return t.DisableJob(name).toToolResult(), nil
+		
+	case "create_recurring_reminder":
+		name, _ := params["name"].(string)
+		schedule, _ := params["schedule"].(string)
+		message, _ := params["message"].(string)
+		
+		// Get chatID from params or use 0 as placeholder (will be set by scheduler from context)
+		var chatID int64
+		if chatIDFloat, ok := params["chat_id"].(float64); ok {
+			chatID = int64(chatIDFloat)
+		} else if chatIDInt, ok := params["chat_id"].(int64); ok {
+			chatID = chatIDInt
+		}
+		// If chatID is 0, the scheduler will need to determine it from context
+		
+		var startsAt, expiresAt *time.Time
+		if startsAtStr, ok := params["starts_at"].(string); ok && startsAtStr != "" {
+			if parsed, err := time.Parse(time.RFC3339, startsAtStr); err == nil {
+				startsAt = &parsed
+			}
+		}
+		if expiresAtStr, ok := params["expires_at"].(string); ok && expiresAtStr != "" {
+			if parsed, err := time.Parse(time.RFC3339, expiresAtStr); err == nil {
+				expiresAt = &parsed
+			}
+		}
+		
+		return t.CreateRecurringReminder(name, schedule, message, chatID, startsAt, expiresAt).toToolResult(), nil
+		
+	case "create_onetime_reminder":
+		name, _ := params["name"].(string)
+		message, _ := params["message"].(string)
+		executeAtStr, ok := params["execute_at"].(string)
+		if !ok {
+			return ToolResult{Success: false, Error: "missing 'execute_at' parameter"}, fmt.Errorf("missing 'execute_at' parameter")
+		}
+		
+		executeAt, err := time.Parse(time.RFC3339, executeAtStr)
+		if err != nil {
+			return ToolResult{Success: false, Error: fmt.Sprintf("invalid execute_at format: %v", err)}, err
+		}
+		
+		// Get chatID from params or use 0 as placeholder
+		var chatID int64
+		if chatIDFloat, ok := params["chat_id"].(float64); ok {
+			chatID = int64(chatIDFloat)
+		} else if chatIDInt, ok := params["chat_id"].(int64); ok {
+			chatID = chatIDInt
+		}
+		
+		return t.CreateOneTimeReminder(name, executeAt, message, chatID).toToolResult(), nil
+		
+	case "pause":
+		name, _ := params["name"].(string)
+		pausedUntilStr, ok := params["paused_until"].(string)
+		if !ok {
+			return ToolResult{Success: false, Error: "missing 'paused_until' parameter"}, fmt.Errorf("missing 'paused_until' parameter")
+		}
+		
+		pausedUntil, err := time.Parse(time.RFC3339, pausedUntilStr)
+		if err != nil {
+			return ToolResult{Success: false, Error: fmt.Sprintf("invalid paused_until format: %v", err)}, err
+		}
+		
+		return t.PauseJob(name, pausedUntil).toToolResult(), nil
+		
+	case "resume":
+		name, _ := params["name"].(string)
+		return t.ResumeJob(name).toToolResult(), nil
+		
+	case "extend_expiration":
+		name, _ := params["name"].(string)
+		newExpiresAtStr, ok := params["new_expires_at"].(string)
+		if !ok {
+			return ToolResult{Success: false, Error: "missing 'new_expires_at' parameter"}, fmt.Errorf("missing 'new_expires_at' parameter")
+		}
+		
+		newExpiresAt, err := time.Parse(time.RFC3339, newExpiresAtStr)
+		if err != nil {
+			return ToolResult{Success: false, Error: fmt.Sprintf("invalid new_expires_at format: %v", err)}, err
+		}
+		
+		return t.ExtendExpiration(name, newExpiresAt).toToolResult(), nil
+		
+	case "get_history":
+		name, _ := params["name"].(string)
+		limit := 10 // default
+		if limitFloat, ok := params["limit"].(float64); ok {
+			limit = int(limitFloat)
+		} else if limitInt, ok := params["limit"].(int); ok {
+			limit = limitInt
+		}
+		
+		return t.GetExecutionHistory(name, limit).toToolResult(), nil
+		
 	default:
 		return ToolResult{
 			Success: false,

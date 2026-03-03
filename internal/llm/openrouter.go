@@ -421,7 +421,8 @@ func (c *OpenRouterClient) buildToolDefinitions() []ToolDefinition {
 		// Build parameters schema based on tool name
 		var parameters map[string]interface{}
 		
-		if toolInfo.Name == "shell_tool" {
+		switch toolInfo.Name {
+		case "shell_tool":
 			parameters = map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -432,7 +433,193 @@ func (c *OpenRouterClient) buildToolDefinitions() []ToolDefinition {
 				},
 				"required": []string{"command"},
 			}
-		} else {
+			
+		case "cron_management":
+			parameters = map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"action": map[string]interface{}{
+						"type":        "string",
+						"description": "Action to perform: list, get, add, remove, enable, disable, create_recurring_reminder, create_onetime_reminder, pause, resume, extend_expiration, get_history",
+						"enum":        []string{"list", "get", "add", "remove", "enable", "disable", "create_recurring_reminder", "create_onetime_reminder", "pause", "resume", "extend_expiration", "get_history"},
+					},
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Job name (required for get, remove, enable, disable, pause, resume, extend_expiration, get_history)",
+					},
+					"schedule": map[string]interface{}{
+						"type":        "string",
+						"description": "Cron expression (required for add and create_recurring_reminder)",
+					},
+					"task_type": map[string]interface{}{
+						"type":        "string",
+						"description": "Task type (required for add)",
+					},
+					"message": map[string]interface{}{
+						"type":        "string",
+						"description": "Reminder message (required for create_recurring_reminder and create_onetime_reminder)",
+					},
+					"chat_id": map[string]interface{}{
+						"type":        "integer",
+						"description": "Telegram chat ID (optional, defaults to current chat if not provided)",
+					},
+					"execute_at": map[string]interface{}{
+						"type":        "string",
+						"description": "ISO 8601 timestamp for one-time execution (required for create_onetime_reminder)",
+					},
+					"starts_at": map[string]interface{}{
+						"type":        "string",
+						"description": "ISO 8601 timestamp when job should start (optional for create_recurring_reminder)",
+					},
+					"expires_at": map[string]interface{}{
+						"type":        "string",
+						"description": "ISO 8601 timestamp when job should expire (optional for create_recurring_reminder)",
+					},
+					"paused_until": map[string]interface{}{
+						"type":        "string",
+						"description": "ISO 8601 timestamp until when job is paused (required for pause)",
+					},
+					"new_expires_at": map[string]interface{}{
+						"type":        "string",
+						"description": "New expiration timestamp (required for extend_expiration)",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"description": "Maximum number of history entries to return (optional for get_history)",
+					},
+				},
+				"required": []string{"action"},
+			}
+			
+		case "notes_management":
+			parameters = map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"operation": map[string]interface{}{
+						"type":        "string",
+						"description": "Operation to perform: create, read, update, delete, list",
+						"enum":        []string{"create", "read", "update", "delete", "list"},
+					},
+					"category": map[string]interface{}{
+						"type":        "string",
+						"description": "Note category: tasks, ideas, reflections, scratchpad (required for create and list)",
+						"enum":        []string{"tasks", "ideas", "reflections", "scratchpad"},
+					},
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Note name (required for create, read, update, delete)",
+					},
+					"content": map[string]interface{}{
+						"type":        "string",
+						"description": "Note content (required for create and update)",
+					},
+					"status": map[string]interface{}{
+						"type":        "string",
+						"description": "Note status: in_progress, completed, archived (optional for create and update, optional filter for list)",
+						"enum":        []string{"in_progress", "completed", "archived"},
+					},
+					"auto_delete": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Whether note should be auto-deleted (optional for create and update, default: true)",
+					},
+				},
+				"required": []string{"operation"},
+			}
+			
+		case "memory_summary":
+			parameters = map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"date": map[string]interface{}{
+						"type":        "string",
+						"description": "Date in YYYY-MM-DD format for daily summary",
+					},
+					"week": map[string]interface{}{
+						"type":        "integer",
+						"description": "Week number for weekly summary",
+					},
+					"year": map[string]interface{}{
+						"type":        "integer",
+						"description": "Year for weekly or quarterly summary",
+					},
+					"quarter": map[string]interface{}{
+						"type":        "integer",
+						"description": "Quarter number (1-4) for quarterly summary",
+					},
+					"start_date": map[string]interface{}{
+						"type":        "string",
+						"description": "Start date in YYYY-MM-DD format for date range query",
+					},
+					"end_date": map[string]interface{}{
+						"type":        "string",
+						"description": "End date in YYYY-MM-DD format for date range query",
+					},
+				},
+			}
+			
+		case "topic_knowledge":
+			parameters = map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"operation": map[string]interface{}{
+						"type":        "string",
+						"description": "Operation to perform: get, list, search, write, create, append",
+						"enum":        []string{"get", "list", "search", "write", "create", "append"},
+					},
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Topic name (required for get, write, create, append)",
+					},
+					"content": map[string]interface{}{
+						"type":        "string",
+						"description": "Topic content (required for write, create, append)",
+					},
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "Search query (required for search)",
+					},
+				},
+				"required": []string{"operation"},
+			}
+			
+		case "chatlog_search":
+			parameters = map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"operation": map[string]interface{}{
+						"type":        "string",
+						"description": "Operation to perform: search, get_session",
+						"enum":        []string{"search", "get_session"},
+					},
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "Search query (required for search)",
+					},
+					"start_date": map[string]interface{}{
+						"type":        "string",
+						"description": "Start date in YYYY-MM-DD format (optional for search)",
+					},
+					"end_date": map[string]interface{}{
+						"type":        "string",
+						"description": "End date in YYYY-MM-DD format (optional for search)",
+					},
+					"max_results": map[string]interface{}{
+						"type":        "integer",
+						"description": "Maximum number of results (optional for search, default: 10)",
+					},
+					"date": map[string]interface{}{
+						"type":        "string",
+						"description": "Date in YYYY-MM-DD format (required for get_session)",
+					},
+					"session_num": map[string]interface{}{
+						"type":        "integer",
+						"description": "Session number (required for get_session)",
+					},
+				},
+				"required": []string{"operation"},
+			}
+			
+		default:
 			// Default parameters schema for unknown tools
 			parameters = map[string]interface{}{
 				"type":       "object",
