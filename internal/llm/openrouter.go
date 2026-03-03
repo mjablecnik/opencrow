@@ -29,6 +29,11 @@ type ToolExecutorInterface interface {
 	ExecuteTool(name string, params map[string]interface{}) (tools.ToolResult, error)
 }
 
+// NotificationSender defines the interface for sending notifications to users
+type NotificationSender interface {
+	SendMessage(chatID int64, text string) error
+}
+
 // Message represents a message in the OpenRouter API format
 type Message struct {
 	Role       string     `json:"role"`
@@ -100,14 +105,15 @@ type APIError struct {
 
 // OpenRouterClient manages communication with the OpenRouter API
 type OpenRouterClient struct {
-	apiKey         string
-	modelName      string
-	agent          *agent.Agent
-	sessionManager *session.SessionManager
-	toolExecutor   ToolExecutorInterface
-	httpClient     *http.Client
-	logger         *utils.Logger
-	contextManager *memory.ContextManager // Memory context manager
+	apiKey              string
+	modelName           string
+	agent               *agent.Agent
+	sessionManager      *session.SessionManager
+	toolExecutor        ToolExecutorInterface
+	httpClient          *http.Client
+	logger              *utils.Logger
+	contextManager      *memory.ContextManager // Memory context manager
+	notificationSender  NotificationSender     // For sending tool activation notifications
 }
 
 // NewOpenRouterClient creates a new OpenRouter client instance
@@ -120,22 +126,28 @@ func NewOpenRouterClient(
 	logger *utils.Logger,
 ) *OpenRouterClient {
 	return &OpenRouterClient{
-		apiKey:         apiKey,
-		modelName:      modelName,
-		agent:          agent,
-		sessionManager: sessionManager,
-		toolExecutor:   toolExecutor,
+		apiKey:             apiKey,
+		modelName:          modelName,
+		agent:              agent,
+		sessionManager:     sessionManager,
+		toolExecutor:       toolExecutor,
 		httpClient: &http.Client{
 			Timeout: requestTimeout,
 		},
-		logger:         logger,
-		contextManager: nil, // Will be set via SetContextManager
+		logger:             logger,
+		contextManager:     nil, // Will be set via SetContextManager
+		notificationSender: nil, // Will be set via SetNotificationSender
 	}
 }
 
 // SetContextManager sets the memory context manager
 func (c *OpenRouterClient) SetContextManager(contextManager *memory.ContextManager) {
 	c.contextManager = contextManager
+}
+
+// SetNotificationSender sets the notification sender for tool activation messages
+func (c *OpenRouterClient) SetNotificationSender(sender NotificationSender) {
+	c.notificationSender = sender
 }
 
 // LoadIdentityFiles loads identity files from the agent component
@@ -689,6 +701,9 @@ func (c *OpenRouterClient) handleToolCalls(ctx context.Context, chatID int64, to
 	toolMessages := make([]Message, 0, len(toolCalls))
 	
 	for _, toolCall := range toolCalls {
+		// Send notification about tool activation
+		c.sendToolActivationNotification(chatID, toolCall.Function.Name)
+		
 		result, err := c.HandleToolRequest(toolCall)
 		
 		// Build tool result message
@@ -794,6 +809,42 @@ func (c *OpenRouterClient) handleToolCalls(ctx context.Context, chatID int64, to
 		"responseLength", len(generatedText))
 
 	return generatedText, nil
+}
+
+// sendToolActivationNotification sends a notification to the user when a tool is activated
+func (c *OpenRouterClient) sendToolActivationNotification(chatID int64, toolName string) {
+	if c.notificationSender == nil {
+		c.logger.DebugWithComponent("OpenRouterClient", "No notification sender configured, skipping tool notification")
+		return
+	}
+
+	// Map tool names to user-friendly messages
+	var message string
+	switch toolName {
+	case "notes_management":
+		message = "🗒️ <i>Saving note...</i>"
+	case "cron_management":
+		message = "⏰ <i>Setting reminder...</i>"
+	case "shell_tool":
+		message = "⚙️ <i>Running command...</i>"
+	case "memory_summary":
+		message = "📚 <i>Searching memory...</i>"
+	case "topic_knowledge":
+		message = "💡 <i>Saving knowledge...</i>"
+	case "chatlog_search":
+		message = "🔍 <i>Searching history...</i>"
+	default:
+		message = fmt.Sprintf("🔧 <i>Activating tool: %s...</i>", toolName)
+	}
+
+	// Send notification (non-blocking, ignore errors)
+	go func() {
+		if err := c.notificationSender.SendMessage(chatID, message); err != nil {
+			c.logger.WarnWithComponent("OpenRouterClient", "Failed to send tool notification", 
+				"toolName", toolName, 
+				"error", err)
+		}
+	}()
 }
 
 // ExtractTopics extracts domain-specific topics from conversation content using LLM
