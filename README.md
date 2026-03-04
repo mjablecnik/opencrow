@@ -2,6 +2,8 @@
 
 A Telegram bot implemented in Go that provides conversational AI capabilities through OpenRouter's LLM integration. The bot features a comprehensive memory and scheduling system that maintains conversation history, organizes domain-specific knowledge, and executes scheduled tasks automatically.
 
+OpenCrow is designed to be more efficient than traditional chatbot implementations, with a focus on simplicity, performance, and maintainability.
+
 ## Features
 
 - **Telegram Integration**: Direct message support with automatic retry logic and exponential backoff
@@ -42,18 +44,22 @@ A Telegram bot implemented in Go that provides conversational AI capabilities th
    # Edit .env and add your TELEGRAM_BOT_TOKEN and OPENROUTER_API_KEY
    ```
 
-3. Customize identity files (optional):
-   ```bash
-   # Edit files in agent/ directory to customize bot behavior
-   nano agent/IDENTITY.md
-   nano agent/PERSONALITY.md
-   nano agent/SOUL.md
-   nano agent/USER.md
-   ```
-
-4. Start the bot:
+3. Start the bot (identity files will be created automatically on first run):
    ```bash
    docker-compose up -d
+   ```
+
+4. Customize identity files (optional):
+   ```bash
+   # Edit files in workplace/agent/ directory to customize bot behavior
+   nano workplace/agent/IDENTITY.md
+   nano workplace/agent/PERSONALITY.md
+   nano workplace/agent/SOUL.md
+   nano workplace/agent/USER.md
+   nano workplace/agent/TOOLS.md
+   
+   # Restart the bot to apply changes
+   docker-compose restart bot
    ```
 
 5. View logs:
@@ -141,10 +147,11 @@ The bot is configured entirely through environment variables. All variables can 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `MODEL_NAME` | LLM model to use for responses | `google/gemini-2.5-flash-lite` |
-| `SHELL_TIMEOUT` | Timeout for shell command execution (seconds) | `30` |
+| `SHELL_TIMEOUT` | Timeout for shell command execution | `30s` |
 | `LOG_LEVEL` | Logging level: `debug`, `info`, `warn`, `error` | `info` |
 | `MEMORY_TOKEN_THRESHOLD` | Token limit for emergency summarization | `50000` |
 | `TOPIC_SIZE_THRESHOLD` | Topic file size threshold for subdivision (bytes) | `102400` (100KB) |
+| `NOTES_ENABLED` | Enable notes system | `true` |
 | `NOTES_CLEANUP_ENABLED` | Enable automatic notes cleanup | `true` |
 | `NOTES_MAX_AGE_DAYS` | Maximum age for notes without modifications | `30` |
 | `NOTES_COMPLETED_RETENTION_DAYS` | Retention days for completed notes | `7` |
@@ -170,39 +177,41 @@ The bot is configured entirely through environment variables. All variables can 
 
 ```
 opencrow/
-├── agent/                          # Identity and personality files
-│   ├── IDENTITY.md                 # Bot's static technical metadata
-│   ├── PERSONALITY.md              # Communication style and behavior patterns
-│   ├── SOUL.md                     # Core beliefs and authentic self
-│   ├── USER.md                     # User preferences and context
-│   └── MEMORY.md                   # Memory index (auto-generated)
-├── memory/                         # Memory system data (created at runtime)
-│   ├── chat/                       # Conversation logs
-│   │   ├── 2024-01-15/            # Daily folder
-│   │   │   ├── session-001.log
-│   │   │   ├── session-001-summary.md
-│   │   │   └── daily-summary.md
-│   │   ├── week-03-2024/          # Weekly folder
-│   │   │   ├── 2024-01-15/
-│   │   │   └── summary.md
-│   │   └── Q1-2024/               # Quarterly folder
-│   │       ├── week-01-2024/
-│   │       └── summary.md
-│   ├── topics/                     # Domain-specific knowledge
-│   │   ├── Programming.md
-│   │   ├── Psychology.md
-│   │   └── Food.md
-│   └── notes/                      # Agent's private notes
-│       ├── index.md
-│       ├── tasks/
-│       ├── ideas/
-│       ├── reflections/
-│       └── scratchpad/
-├── config/                         # Configuration (created at runtime)
-│   ├── cron.json                   # Cron job configurations
-│   └── cron_history.json           # Execution history
-├── logs/                           # Application logs (created at runtime)
-│   └── bot.log                     # Main log file
+├── workplace/                      # Runtime data directory (Docker volume mount)
+│   ├── agent/                      # Identity and personality files
+│   │   ├── IDENTITY.md             # Bot's static technical metadata
+│   │   ├── PERSONALITY.md          # Communication style and behavior patterns
+│   │   ├── SOUL.md                 # Core beliefs and authentic self
+│   │   ├── USER.md                 # User preferences and context
+│   │   ├── TOOLS.md                # Tool usage guidelines
+│   │   └── MEMORY.md               # Memory index (auto-generated)
+│   ├── memory/                     # Memory system data (created at runtime)
+│   │   ├── chat/                   # Conversation logs
+│   │   │   ├── 2026-03-03/        # Daily folder
+│   │   │   │   ├── session-001.log
+│   │   │   │   ├── session-001-summary.md
+│   │   │   │   └── daily-summary.md
+│   │   │   ├── week-09-2026/      # Weekly folder
+│   │   │   │   ├── 2026-03-03/
+│   │   │   │   └── summary.md
+│   │   │   └── Q1-2026/           # Quarterly folder
+│   │   │       ├── week-01-2026/
+│   │   │       └── summary.md
+│   │   ├── topics/                 # Domain-specific knowledge
+│   │   │   ├── Programming.md
+│   │   │   ├── Psychology.md
+│   │   │   └── Food.md
+│   │   └── notes/                  # Agent's private notes
+│   │       ├── index.md
+│   │       ├── tasks/
+│   │       ├── ideas/
+│   │       ├── reflections/
+│   │       └── scratchpad/
+│   ├── config/                     # Configuration (created at runtime)
+│   │   ├── cron.json               # Cron job configurations
+│   │   └── cron_history.json       # Execution history
+│   └── logs/                       # Application logs (created at runtime)
+│       └── bot.log                 # Main log file
 ├── cmd/
 │   └── bot/
 │       └── main.go                 # Application entry point
@@ -218,10 +227,10 @@ opencrow/
 │   │   ├── topics.go               # Topic management
 │   │   ├── notes.go                # Notes management
 │   │   ├── reorganize.go           # Hierarchical reorganization
-│   │   └── context.go              # Context retrieval
+│   │   ├── context.go              # Context retrieval
+│   │   └── memory_index.go         # MEMORY.md generation
 │   ├── scheduler/                  # Cron scheduling system
-│   │   ├── cron.go                 # Scheduler implementation
-│   │   └── jobs.go                 # Job definitions
+│   │   └── cron.go                 # Scheduler implementation
 │   ├── session/                    # In-memory session manager
 │   └── tools/                      # Tool executor and tools
 │       ├── executor.go             # Tool execution framework
@@ -233,22 +242,28 @@ opencrow/
 │       └── notes_tool.go           # Notes management tool
 ├── pkg/
 │   └── utils/                      # Logging and file utilities
+├── scripts/
+│   ├── entrypoint.sh               # Docker entrypoint script
+│   ├── deploy.sh                   # Deployment script
+│   └── setup-secrets.sh            # Secrets setup script
 ├── .env.example                    # Environment variable template
 ├── docker-compose.yml              # Docker Compose configuration
 ├── Dockerfile                      # Docker image definition
+├── fly.toml                        # Fly.io deployment configuration
 ├── go.mod                          # Go module definition
 └── README.md                       # This file
 ```
 
 ### Important Directories
 
-- **agent/**: Contains identity files that define the bot's behavior and personality. These files are loaded on startup and included in every LLM request. Includes MEMORY.md which is auto-generated by the memory system.
-- **memory/**: Stores all conversation history, domain knowledge, and agent notes. This directory is automatically created and managed by the memory system.
-  - **chat/**: Hierarchical conversation logs organized by day, week, and quarter
-  - **topics/**: Domain-specific knowledge files (Programming, Psychology, Food, etc.)
-  - **notes/**: Agent's private working notes organized by category
-- **config/**: Stores cron job configurations and execution history. Created automatically at runtime.
-- **logs/**: Stores application logs. In Docker deployments, this directory is mounted as a volume for persistence.
+- **workplace/**: Root directory for all runtime data, mounted as a Docker volume for persistence
+  - **agent/**: Contains identity files that define the bot's behavior and personality. These files are loaded on startup and included in every LLM request. Includes MEMORY.md which is auto-generated by the memory system, and TOOLS.md with tool usage guidelines.
+  - **memory/**: Stores all conversation history, domain knowledge, and agent notes. This directory is automatically created and managed by the memory system.
+    - **chat/**: Hierarchical conversation logs organized by day, week, and quarter
+    - **topics/**: Domain-specific knowledge files (Programming, Psychology, Food, etc.)
+    - **notes/**: Agent's private working notes organized by category
+  - **config/**: Stores cron job configurations and execution history. Created automatically at runtime.
+  - **logs/**: Stores application logs. In Docker deployments, this directory is mounted as a volume for persistence.
 
 ## Memory System
 
@@ -434,22 +449,22 @@ Contains static technical metadata about the bot.
 ```markdown
 # Bot Identity
 
-**Name:** SimpleTelegramBot
-**Created:** 2024-01-15
+**Name:** OpenCrow
+**Created:** 2026-03-01
 **Creator:** OpenCrow Team
 **Version:** 1.0.0
 
 ## Purpose
 
-SimpleTelegramBot is a minimal viable conversational AI assistant that maintains
-session history and can execute basic shell commands.
+OpenCrow is a conversational AI assistant that maintains comprehensive memory,
+organizes domain-specific knowledge, and executes scheduled tasks automatically.
 
 ## Core Facts
 
 - Built with Go and OpenRouter API
 - Deployed as Docker container
-- Maintains in-memory session history
-- Supports basic tool execution
+- Maintains permanent conversation history with hierarchical organization
+- Supports tool execution and scheduled reminders
 ```
 
 ### PERSONALITY.md
@@ -473,6 +488,13 @@ Describes the bot's communication style and behavior patterns.
 - Ask clarifying questions when needed
 - Explain technical concepts simply
 - Acknowledge limitations honestly
+
+## Response Format
+
+- Write naturally with HTML formatting for emphasis
+- Use Telegram-supported HTML tags for formatting
+- Keep formatting simple and readable
+- Use bullet points for lists
 ```
 
 ### SOUL.md
@@ -497,9 +519,9 @@ while being honest about my capabilities and limitations.
 
 ## Authentic Self
 
-I am a simple chatbot designed to provide conversational AI assistance with
-basic tool execution capabilities. I maintain context within sessions and
-strive to be consistently helpful.
+I am a chatbot designed to provide conversational AI assistance with
+comprehensive memory management and tool execution capabilities. I maintain
+context across sessions and strive to be consistently helpful.
 ```
 
 ### USER.md
@@ -536,38 +558,38 @@ Auto-generated index file that provides an overview of the memory system (create
 ```markdown
 # Memory Index
 
-**Last Updated:** 2024-01-15 10:30:00
+**Last Updated:** 2026-03-03 10:30:00
 
 ## Current Context
 
 ### Active Session
 - Session: 003
-- Started: 2024-01-15 09:00:00
+- Started: 2026-03-03 09:00:00
 - Messages: 15
 - Topic: Docker deployment
 
 ### Recent Summary
-Last daily summary: 2024-01-14
-Last weekly summary: Week 02, 2024
-Last quarterly summary: Q4 2023
+Last daily summary: 2026-03-02
+Last weekly summary: Week 09, 2026
+Last quarterly summary: Q1 2026
 
 ## Chat History Structure
 
-### Current Quarter: Q1 2024
-- **Week 03 (2024-01-15 to 2024-01-21)**
-  - 2024-01-15: 3 sessions, Docker focus
-  - Summary: memory/chat/week-03-2024/summary.md
+### Current Quarter: Q1 2026
+- **Week 09 (2026-03-03 to 2026-03-09)**
+  - 2026-03-03: 3 sessions, Docker focus
+  - Summary: memory/chat/week-09-2026/summary.md
 
 ## Topics Knowledge Base
 
 ### Programming
 - **Docker** (memory/topics/Programming/Docker.md)
-  - Last updated: 2024-01-15
+  - Last updated: 2026-03-03
   - Coverage: Container basics, Go deployment
 
 ### Psychology
 - **Conversation Patterns** (memory/topics/Psychology.md)
-  - Last updated: 2024-01-10
+  - Last updated: 2026-03-01
   - Coverage: User preferences, learning style
 
 ## Agent Notes
@@ -579,10 +601,11 @@ Active notes: 2
 
 ### Customizing Identity Files
 
-1. Edit the files in the `agent/` directory to customize bot behavior
+1. Edit the files in the `workplace/agent/` directory to customize bot behavior
 2. Restart the bot to load the new identity files
-3. The bot will fail to start if IDENTITY.md, PERSONALITY.md, SOUL.md, or USER.md are missing
+3. The bot will create default identity files automatically on first run if they don't exist
 4. MEMORY.md is auto-generated and should not be manually edited
+5. TOOLS.md contains guidelines for tool usage and should be customized based on your needs
 
 ## Usage
 
@@ -651,19 +674,18 @@ Active notes: 2
    echo $OPENROUTER_API_KEY
    ```
 
-2. Verify identity files exist:
-   ```bash
-   ls -la agent/
-   # Should show: IDENTITY.md, PERSONALITY.md, SOUL.md, USER.md
-   ```
-
-3. Check logs for specific error messages:
+2. Check logs for specific error messages:
    ```bash
    # Docker
    docker-compose logs bot
    
    # Local
-   cat logs/bot.log
+   cat workplace/logs/bot.log
+   ```
+
+3. Verify Docker volume mounts are correct:
+   ```bash
+   docker-compose config
    ```
 
 ### Bot doesn't respond to messages
@@ -744,14 +766,12 @@ Active notes: 2
 1. Verify volume mounts in docker-compose.yml:
    ```yaml
    volumes:
-     - ./agent:/app/agent:ro
-     - ./logs:/app/logs
+     - ./workplace:/app/workplace
    ```
 
 2. Check file permissions:
    ```bash
-   ls -la agent/
-   ls -la logs/
+   ls -la workplace/
    # Files should be readable by the container user (UID 1000)
    ```
 
@@ -850,11 +870,10 @@ Memory Manager           Tool Executor        Agent Tools
 Session Manager          Cron Scheduler      (cron, memory, topic,
     ↓                         ↓                chatlog, notes)
 File System              Config Files
-(memory/chat/)           (config/cron.json)
-(memory/topics/)
-(memory/notes/)
+(workplace/memory/)      (workplace/config/)
+(workplace/agent/)
     ↑
-Agent (Identity Files + MEMORY.md)
+Agent (Identity Files + MEMORY.md + TOOLS.md)
 ```
 
 1. User sends message via Telegram
@@ -878,11 +897,11 @@ Scheduled operations flow (cascade execution at 4:00 AM):
 
 ### Data Persistence
 
-- **Permanent**: Session logs, summaries, topic files, MEMORY.md (memory/ directory)
-- **Persistent**: Cron configurations, execution history (config/ directory)
-- **Persistent**: Identity files (agent/ directory), application logs (logs/ directory)
+- **Permanent**: Session logs, summaries, topic files, MEMORY.md (workplace/memory/ directory)
+- **Persistent**: Cron configurations, execution history (workplace/config/ directory)
+- **Persistent**: Identity files (workplace/agent/ directory), application logs (workplace/logs/ directory)
 - **Ephemeral**: In-memory session context (cleared on session reset)
-- **Docker Volumes**: agent/, memory/, config/, and logs/ directories are mounted as volumes
+- **Docker Volumes**: workplace/ directory mounted as volume for complete data persistencend logs/ directories are mounted as volumes
 
 ## Development
 
@@ -893,8 +912,12 @@ The project follows standard Go project layout:
 - `cmd/`: Application entry points
 - `internal/`: Private application code
 - `pkg/`: Public library code
-- `agent/`: Identity configuration files
-- `logs/`: Runtime logs
+- `workplace/`: Runtime data directory (Docker volume)
+  - `agent/`: Identity configuration files
+  - `memory/`: Conversation logs, topics, and notes
+  - `config/`: Cron configurations
+  - `logs/`: Runtime logs
+- `scripts/`: Deployment and utility scripts
 
 ### Adding New Tools
 
@@ -944,15 +967,9 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 
 Copyright (C) 2026 Martin Jablečník
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
 ## Contributing
 
