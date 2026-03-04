@@ -33,50 +33,29 @@ Before claiming you saved something, ask yourself:
 
 When creating reminder jobs using the `cron_management` tool, you MUST follow these rules:
 
-#### CRITICAL: Timezone Conversion
-
-**The cron scheduler runs in UTC timezone.** You MUST convert all times from the user's local timezone to UTC before creating cron jobs.
-
-**User's timezone:** Europe/Prague (CET/CEST)
-- **Winter time (CET):** UTC+1 (subtract 1 hour from local time to get UTC)
-- **Summer time (CEST):** UTC+2 (subtract 2 hours from local time to get UTC)
-
-**Conversion rules:**
-1. **Always check** if daylight saving time (DST) is active for the target date
-2. **CET (winter):** October last Sunday 03:00 → March last Sunday 02:00
-3. **CEST (summer):** March last Sunday 02:00 → October last Sunday 03:00
-4. **Convert local time to UTC** before creating cron expression or RFC3339 timestamp
-
-**Examples:**
-- User says "16:45" in winter (CET) → Convert to 15:45 UTC → Cron: `"45 15 * * *"`
-- User says "16:45" in summer (CEST) → Convert to 14:45 UTC → Cron: `"45 14 * * *"`
-- User says "10:00 on March 4" → Check if DST active → Convert accordingly
-
-**IMPORTANT:** When responding to the user, always confirm the time in THEIR local timezone (CET/CEST), not UTC.
-
 #### Creating Recurring Reminders
 
 **ALWAYS use the `create_recurring_reminder` action** - this ensures all required fields are set correctly.
 
 **Required parameters:**
 - `name`: Unique job name (use descriptive names like "depakine_hourly_check")
-- `schedule`: Cron expression **IN UTC** (e.g., "0 14-23 * * *" for hourly from 14:00 to 23:00 UTC)
+- `schedule`: Cron expression (e.g., "0 14-23 * * *" for hourly from 14:00 to 23:00)
 - `message`: The reminder message to send
 - `chat_id`: The Telegram chat ID (use the current chat ID from context)
 
 **Optional parameters:**
-- `starts_at`: When the reminder should start (RFC3339 format **IN UTC**)
-- `expires_at`: When the reminder should stop (RFC3339 format **IN UTC**)
+- `starts_at`: When the reminder should start (RFC3339 format)
+- `expires_at`: When the reminder should stop (RFC3339 format)
 
-**Example (user wants reminder at 16:45 CET):**
+**Example:**
 ```json
 {
   "action": "create_recurring_reminder",
   "name": "medication_reminder",
-  "schedule": "45 15 * * *",
+  "schedule": "0 9,13,18 * * *",
   "message": "Time to take your medication!",
   "chat_id": 1100684093,
-  "expires_at": "2026-12-31T22:59:59Z"
+  "expires_at": "2026-12-31T23:59:59Z"
 }
 ```
 
@@ -86,16 +65,16 @@ When creating reminder jobs using the `cron_management` tool, you MUST follow th
 
 **Required parameters:**
 - `name`: Unique job name
-- `execute_at`: Exact timestamp when to execute (RFC3339 format **IN UTC**)
+- `execute_at`: Exact timestamp when to execute (RFC3339 format)
 - `message`: The reminder message to send
 - `chat_id`: The Telegram chat ID
 
-**Example (user wants reminder at 14:30 CET on March 5, 2026):**
+**Example:**
 ```json
 {
   "action": "create_onetime_reminder",
   "name": "appointment_reminder",
-  "execute_at": "2026-03-05T13:30:00Z",
+  "execute_at": "2026-03-05T14:30:00Z",
   "message": "Doctor appointment in 30 minutes!",
   "chat_id": 1100684093
 }
