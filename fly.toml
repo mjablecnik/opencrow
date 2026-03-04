@@ -14,7 +14,7 @@ primary_region = 'fra'
   
   # Timeouts and logging
   SHELL_TIMEOUT = "30"
-  LOG_LEVEL = "info"
+  LOG_LEVEL = "debug"
   
   # Memory system configuration
   MEMORY_TOKEN_THRESHOLD = "50000"
