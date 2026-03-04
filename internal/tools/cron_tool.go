@@ -799,6 +799,31 @@ func (t *CronManagementTool) GetExecutionHistory(name string, limit int) *CronTo
 	}
 }
 
+// CleanupExpiredJobs removes all one-time jobs that have passed their execution time
+func (t *CronManagementTool) CleanupExpiredJobs() *CronToolResult {
+	count, err := t.scheduler.CleanupExpiredJobs()
+	if err != nil {
+		return &CronToolResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to cleanup expired jobs: %v", err),
+		}
+	}
+
+	if count == 0 {
+		return &CronToolResult{
+			Success: true,
+			Message: "No expired one-time jobs found",
+			Data:    map[string]interface{}{"removed_count": 0},
+		}
+	}
+
+	return &CronToolResult{
+		Success: true,
+		Message: fmt.Sprintf("Successfully removed %d expired one-time job(s)", count),
+		Data:    map[string]interface{}{"removed_count": count},
+	}
+}
+
 // Name returns the tool name for registration
 func (t *CronManagementTool) Name() string {
 	return "cron_management"
@@ -941,6 +966,9 @@ func (t *CronManagementTool) Execute(params map[string]interface{}) (ToolResult,
 		}
 		
 		return t.GetExecutionHistory(name, limit).toToolResult(), nil
+		
+	case "cleanup_expired":
+		return t.CleanupExpiredJobs().toToolResult(), nil
 		
 	default:
 		return ToolResult{

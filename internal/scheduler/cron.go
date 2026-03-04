@@ -1263,3 +1263,53 @@ func (s *CronScheduler) ShouldExecuteQuarterlyOps() bool {
 	
 	return false
 }
+
+// CleanupExpiredJobs removes all one-time jobs that have passed their execution time
+func (s *CronScheduler) CleanupExpiredJobs() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	expiredJobs := make([]string, 0)
+
+	// Find all expired one-time jobs
+	for name, job := range s.jobs {
+		// Check if it's a one-time job with execute_at
+		if job.ExecuteAt != nil {
+			// Check if execution time has passed
+			if now.After(*job.ExecuteAt) {
+				expiredJobs = append(expiredJobs, name)
+			}
+		}
+	}
+
+	// Remove expired jobs
+	for _, name := range expiredJobs {
+		job := s.jobs[name]
+		
+		// Log deletion event
+		s.logDeletion(name, job.TaskType, "expired_onetime_job")
+
+		// Remove from cron scheduler if scheduled
+		if entryID, exists := s.cronIDs[name]; exists {
+			s.cron.Remove(entryID)
+			delete(s.cronIDs, name)
+		}
+
+		// Remove from jobs map
+		delete(s.jobs, name)
+		
+		s.logger.Printf("Cleaned up expired one-time job: %s (was scheduled for: %s)", 
+			name, job.ExecuteAt.Format(time.RFC3339))
+	}
+
+	// Save jobs if any were removed
+	if len(expiredJobs) > 0 {
+		if err := s.saveJobsInternal(); err != nil {
+			return len(expiredJobs), fmt.Errorf("failed to save jobs after cleanup: %w", err)
+		}
+	}
+
+	s.logger.Printf("Cleanup complete: removed %d expired one-time job(s)", len(expiredJobs))
+	return len(expiredJobs), nil
+}

@@ -394,11 +394,9 @@ func (c *OpenRouterClient) extractGeneratedText(response OpenRouterResponse) (st
 	
 	choice := response.Choices[0]
 	
-	// If content is empty, check if there were tool calls that returned empty results
-	// In this case, provide a helpful fallback message
+	// If content is empty, return an error so the caller can handle it appropriately
 	if choice.Message.Content == "" {
-		c.logger.WarnWithComponent("OpenRouterClient", "Empty content in API response, using fallback message")
-		return "I executed the command, but it returned no output. This could mean the data wasn't found or the command needs adjustment.", nil
+		return "", fmt.Errorf("empty content in API response")
 	}
 	
 	return choice.Message.Content, nil
@@ -812,7 +810,27 @@ func (c *OpenRouterClient) handleToolCalls(ctx context.Context, chatID int64, to
 	// Extract final response
 	generatedText, err := c.extractGeneratedText(apiResponse)
 	if err != nil {
-		return "", err
+		// If we got an empty response after tool execution, it's likely a model issue
+		// Provide a helpful fallback that includes the tool results
+		c.logger.WarnWithComponent("OpenRouterClient", "Empty content after tool execution, providing fallback", 
+			"error", err)
+		
+		// Check if any tool had an error
+		hasError := false
+		var toolSummary string
+		for _, toolMsg := range toolMessages {
+			// Check if this is an error message
+			if strings.Contains(toolMsg.Content, "Error:") || strings.Contains(toolMsg.Content, "exit code:") && !strings.Contains(toolMsg.Content, "exit code: 0") {
+				hasError = true
+			}
+			toolSummary += toolMsg.Content + "\n\n"
+		}
+		
+		// Return appropriate message based on success/failure
+		if hasError {
+			return fmt.Sprintf("❌ Příkaz selhal.\n\n%s", toolSummary), nil
+		}
+		return fmt.Sprintf("✅ Příkaz byl úspěšně proveden.\n\n%s", toolSummary), nil
 	}
 
 	c.logger.InfoWithComponent("OpenRouterClient", "Successfully received final response after tool execution", 
