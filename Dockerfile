@@ -40,6 +40,13 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /build/bot /app/bot
 
+# Copy default agent identity files
+COPY --from=builder /build/workplace/agent /app/default-agent
+
+# Copy entrypoint script
+COPY scripts/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 # Create directory for volume
 RUN mkdir -p /app/workplace && \
     chown -R botuser:botuser /app
@@ -66,5 +73,5 @@ ENV TELEGRAM_BOT_TOKEN="" \
 
 # Expose no ports (bot uses polling, not webhooks)
 
-# Set entrypoint to run bot binary
-ENTRYPOINT ["/app/bot"]
+# Set entrypoint to initialization script
+ENTRYPOINT ["/app/entrypoint.sh"]
