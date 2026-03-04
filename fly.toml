@@ -14,7 +14,7 @@ primary_region = 'fra'
   
   # Timeouts and logging
   SHELL_TIMEOUT = "30"
-  LOG_LEVEL = "debug"
+  LOG_LEVEL = "info"
   
   # Memory system configuration
   MEMORY_TOKEN_THRESHOLD = "50000"
@@ -50,6 +50,6 @@ primary_region = 'fra'
     path = "/health"
 
 [[vm]]
-  memory = '512mb'
+  memory = '256mb'
   cpus = 1
-  memory_mb = 512
+  memory_mb = 256
