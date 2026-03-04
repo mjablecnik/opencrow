@@ -1,0 +1,48 @@
+# fly.toml app configuration file generated for opencrow on 2026-03-04T14:23:20+01:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'opencrow'
+primary_region = 'fra'
+
+[build]
+
+[env]
+  # Model configuration
+  MODEL_NAME = "google/gemini-3-flash-preview"
+  
+  # Timeouts and logging
+  SHELL_TIMEOUT = "30s"
+  LOG_LEVEL = "info"
+  
+  # Memory system configuration
+  MEMORY_TOKEN_THRESHOLD = "50000"
+  TOPIC_SIZE_THRESHOLD = "102400"
+  
+  # Notes configuration
+  NOTES_CLEANUP_ENABLED = "true"
+  NOTES_MAX_AGE_DAYS = "30"
+  NOTES_ENABLED = "true"
+  NOTES_COMPLETED_RETENTION_DAYS = "7"
+  NOTES_SCRATCHPAD_MAX_AGE_DAYS = "7"
+  
+  # Maintenance schedule (4:00 AM daily)
+  DAILY_MAINTENANCE_TIME = "0 4 * * *"
+
+[[mounts]]
+  source = 'workplace'
+  destination = '/app/workplace'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '512mb'
+  cpus = 1
+  memory_mb = 512

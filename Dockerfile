@@ -18,7 +18,7 @@ RUN go mod download
 COPY . .
 
 # Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bot ./cmd/bot
+RUN CGO_ENABLED=0 GOOS=linux go build -v -o bot ./cmd/bot
 
 # Runtime stage
 FROM alpine:latest
