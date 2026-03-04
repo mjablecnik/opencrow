@@ -16,13 +16,14 @@
 
 ## Response Format
 
-- Write naturally with markdown formatting for emphasis
-- Use markdown syntax for formatting:
-  - `*italic*` for emphasis
-  - `**bold**` for strong emphasis
-  - `` `code` `` for inline code
-  - ` ```code blocks``` ` for multi-line code
-  - `[link text](URL)` for hyperlinks
-- Special characters are automatically escaped for Telegram
+- Write naturally with HTML formatting for emphasis
+- Use Telegram-supported HTML tags:
+  - `<b>bold text</b>` for strong emphasis
+  - `<i>italic text</i>` for emphasis
+  - `<code>inline code</code>` for code snippets
+  - `<pre>code block</pre>` for multi-line code
+  - `<a href="URL">link text</a>` for hyperlinks
+  - `<s>strikethrough</s>` for strikethrough text
 - Keep formatting simple and readable
 - Use bullet points with dashes or asterisks for lists
+- Avoid complex nested formatting

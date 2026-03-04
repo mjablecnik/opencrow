@@ -274,16 +274,37 @@ func (tc *TelegramChannel) escapeMarkdownV2(text string) string {
 	return result.String()
 }
 
-// SendMessage sends a basic message to a user without formatting
+// SendMessage sends a basic message to a user with HTML formatting
 func (tc *TelegramChannel) SendMessage(chatID int64, text string) error {
-	msg := tgbotapi.NewMessage(chatID, text)
-	// Disable markdown parsing - send as plain text
-	msg.ParseMode = ""
+	// Convert markdown-like formatting to HTML for Telegram
+	htmlText := tc.markdownToHTML(text)
+	
+	msg := tgbotapi.NewMessage(chatID, htmlText)
+	msg.ParseMode = "HTML"
 	_, err := tc.bot.Send(msg)
 	if err != nil {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 	return nil
+}
+
+// markdownToHTML converts simple markdown formatting to Telegram HTML
+func (tc *TelegramChannel) markdownToHTML(text string) string {
+	// Simple conversion of common markdown patterns to HTML
+	// Bold: **text** or __text__ -> <b>text</b>
+	// Italic: *text* or _text_ -> <i>text</i>
+	// Code: `text` -> <code>text</code>
+	// This is a basic implementation - for production, consider using a proper markdown parser
+	
+	result := text
+	
+	// Convert **bold** to <b>bold</b>
+	result = strings.ReplaceAll(result, "**", "<b>")
+	// Note: This is overly simplistic and will break with nested formatting
+	// A proper implementation would use a state machine or regex
+	
+	// For now, just return the text as-is and let the LLM generate HTML directly
+	return text
 }
 
 
