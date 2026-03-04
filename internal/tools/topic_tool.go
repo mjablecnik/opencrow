@@ -97,7 +97,7 @@ func (t *TopicKnowledgeTool) GetTopic(name string) *TopicToolResult {
 			Message: fmt.Sprintf("Successfully retrieved topic from MEMORY.md: %s", name),
 			Data: TopicData{
 				Name:         name,
-				FilePath:     "memory/MEMORY.md",
+				FilePath:     "workplace/memory/MEMORY.md",
 				Content:      content,
 				LastModified: time.Now(), // MEMORY.md is always current
 				TokenCount:   len(content) / 4,
@@ -247,7 +247,7 @@ func (t *TopicKnowledgeTool) WriteTopic(name, content string) *TopicToolResult {
 		}
 	}
 	
-	filePath := fmt.Sprintf("memory/topics/%s.md", name)
+	filePath := fmt.Sprintf("workplace/memory/topics/%s.md", name)
 	
 	return &TopicToolResult{
 		Success: true,
@@ -285,7 +285,7 @@ func (t *TopicKnowledgeTool) CreateTopic(name, content string) *TopicToolResult 
 		}
 	}
 	
-	filePath := fmt.Sprintf("memory/topics/%s.md", name)
+	filePath := fmt.Sprintf("workplace/memory/topics/%s.md", name)
 	
 	return &TopicToolResult{
 		Success: true,
@@ -323,7 +323,7 @@ func (t *TopicKnowledgeTool) AppendToTopic(name, content string) *TopicToolResul
 		}
 	}
 	
-	filePath := fmt.Sprintf("memory/topics/%s.md", name)
+	filePath := fmt.Sprintf("workplace/memory/topics/%s.md", name)
 	
 	return &TopicToolResult{
 		Success: true,

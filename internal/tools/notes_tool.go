@@ -103,7 +103,7 @@ func (t *NotesManagementTool) CreateNote(category, name, content string, autoDel
 		}
 	}
 	
-	filePath := fmt.Sprintf("memory/notes/%s/%s.md", category, name)
+	filePath := fmt.Sprintf("workplace/memory/notes/%s/%s.md", category, name)
 	now := time.Now()
 	
 	return &NotesToolResult{

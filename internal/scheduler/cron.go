@@ -641,7 +641,7 @@ func (s *CronScheduler) executeSessionReset() error {
 		s.logger.Println("Extracting topics from daily summary...")
 		
 		// Read the generated summary
-		summaryPath := fmt.Sprintf("memory/chat/%s/daily-summary.md", dateToSummarize)
+		summaryPath := fmt.Sprintf("workplace/memory/chat/%s/daily-summary.md", dateToSummarize)
 		summaryContent, err := os.ReadFile(summaryPath)
 		if err != nil {
 			s.logger.Printf("Warning: Failed to read daily summary for topic extraction: %v", err)

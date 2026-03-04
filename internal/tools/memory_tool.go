@@ -64,7 +64,7 @@ func NewMemorySummaryTool(summaryManager *memory.SummaryManager) *MemorySummaryT
 // GetDailySummary retrieves the daily summary for a specific date
 func (t *MemorySummaryTool) GetDailySummary(date time.Time) *MemoryToolResult {
 	dateStr := date.Format("2006-01-02")
-	filePath := fmt.Sprintf("memory/chat/%s/daily-summary.md", dateStr)
+	filePath := fmt.Sprintf("workplace/memory/chat/%s/daily-summary.md", dateStr)
 	
 	// Read the summary file
 	content, err := os.ReadFile(filePath)
@@ -91,7 +91,7 @@ func (t *MemorySummaryTool) GetDailySummary(date time.Time) *MemoryToolResult {
 // GetWeeklySummary retrieves the weekly summary for a specific week
 func (t *MemorySummaryTool) GetWeeklySummary(weekNum, year int) *MemoryToolResult {
 	weekFolder := fmt.Sprintf("week-%02d-%d", weekNum, year)
-	filePath := fmt.Sprintf("memory/chat/%s/summary.md", weekFolder)
+	filePath := fmt.Sprintf("workplace/memory/chat/%s/summary.md", weekFolder)
 	
 	// Read the summary file
 	content, err := os.ReadFile(filePath)
@@ -125,7 +125,7 @@ func (t *MemorySummaryTool) GetQuarterlySummary(quarter, year int) *MemoryToolRe
 	}
 	
 	quarterFolder := fmt.Sprintf("Q%d-%d", quarter, year)
-	filePath := fmt.Sprintf("memory/chat/%s/summary.md", quarterFolder)
+	filePath := fmt.Sprintf("workplace/memory/chat/%s/summary.md", quarterFolder)
 	
 	// Read the summary file
 	content, err := os.ReadFile(filePath)
@@ -166,7 +166,7 @@ func (t *MemorySummaryTool) GetSummariesInRange(startDate, endDate time.Time) *M
 	currentDate := startDate
 	for !currentDate.After(endDate) {
 		dateStr := currentDate.Format("2006-01-02")
-		filePath := fmt.Sprintf("memory/chat/%s/daily-summary.md", dateStr)
+		filePath := fmt.Sprintf("workplace/memory/chat/%s/daily-summary.md", dateStr)
 		
 		// Try to read the summary file
 		content, err := os.ReadFile(filePath)
