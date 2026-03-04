@@ -684,13 +684,24 @@ func (c *OpenRouterClient) HandleToolRequest(toolCall ToolCall) (tools.ToolResul
 		}, fmt.Errorf("failed to parse tool arguments: %w", err)
 	}
 
+	// Log parameters for debugging
+	c.logger.DebugWithComponent("OpenRouterClient", "Tool parameters", 
+		"toolName", toolCall.Function.Name,
+		"params", params)
+
 	// Execute the tool via Tool_Executor
 	result, err := c.toolExecutor.ExecuteTool(toolCall.Function.Name, params)
 	
 	if err != nil {
 		c.logger.WarnWithComponent("OpenRouterClient", "Tool execution failed", 
 			"toolName", toolCall.Function.Name,
-			"error", err)
+			"error", err,
+			"params", params)
+	} else if !result.Success {
+		c.logger.WarnWithComponent("OpenRouterClient", "Tool execution unsuccessful", 
+			"toolName", toolCall.Function.Name,
+			"error", result.Error,
+			"params", params)
 	} else {
 		c.logger.InfoWithComponent("OpenRouterClient", "Tool execution completed", 
 			"toolName", toolCall.Function.Name,
@@ -718,13 +729,13 @@ func (c *OpenRouterClient) handleToolCalls(ctx context.Context, chatID int64, to
 		// Build tool result message
 		var resultContent string
 		if err != nil {
-			resultContent = fmt.Sprintf("Tool execution error: %s\nError details: %s", 
+			resultContent = fmt.Sprintf("❌ Tool execution failed: %s\n\nError: %s\n\nPlease inform the user that this operation failed and explain what went wrong.", 
 				toolCall.Function.Name, result.Error)
 		} else if result.Success {
 			resultContent = fmt.Sprintf("Tool: %s\nOutput: %s", 
 				toolCall.Function.Name, result.Output)
 		} else {
-			resultContent = fmt.Sprintf("Tool: %s\nError: %s", 
+			resultContent = fmt.Sprintf("❌ Tool failed: %s\n\nError: %s\n\nPlease inform the user about this failure.", 
 				toolCall.Function.Name, result.Error)
 		}
 
@@ -811,26 +822,47 @@ func (c *OpenRouterClient) handleToolCalls(ctx context.Context, chatID int64, to
 	generatedText, err := c.extractGeneratedText(apiResponse)
 	if err != nil {
 		// If we got an empty response after tool execution, it's likely a model issue
-		// Provide a helpful fallback that includes the tool results
+		// Provide a helpful fallback with concise summary
 		c.logger.WarnWithComponent("OpenRouterClient", "Empty content after tool execution, providing fallback", 
 			"error", err)
 		
-		// Check if any tool had an error
+		// Check if any tool had an error and create concise summary
 		hasError := false
-		var toolSummary string
+		successCount := 0
+		errorCount := 0
+		toolNames := []string{}
+		
 		for _, toolMsg := range toolMessages {
-			// Check if this is an error message
-			if strings.Contains(toolMsg.Content, "Error:") || strings.Contains(toolMsg.Content, "exit code:") && !strings.Contains(toolMsg.Content, "exit code: 0") {
-				hasError = true
+			// Extract tool name from content
+			if strings.HasPrefix(toolMsg.Content, "Tool: ") {
+				parts := strings.SplitN(toolMsg.Content, "\n", 2)
+				if len(parts) > 0 {
+					toolName := strings.TrimPrefix(parts[0], "Tool: ")
+					toolNames = append(toolNames, toolName)
+				}
 			}
-			toolSummary += toolMsg.Content + "\n\n"
+			
+			// Check if this is an error message
+			if strings.Contains(toolMsg.Content, "❌") || strings.Contains(toolMsg.Content, "Error:") {
+				hasError = true
+				errorCount++
+			} else {
+				successCount++
+			}
 		}
 		
-		// Return appropriate message based on success/failure
+		// Create concise fallback message (under 200 chars to stay well within Telegram limit)
 		if hasError {
-			return fmt.Sprintf("❌ Příkaz selhal.\n\n%s", toolSummary), nil
+			if errorCount == len(toolMessages) {
+				return "❌ Operation failed. Please try again or rephrase your request.", nil
+			}
+			return fmt.Sprintf("⚠️ Completed with errors (%d succeeded, %d failed).", successCount, errorCount), nil
 		}
-		return fmt.Sprintf("✅ Příkaz byl úspěšně proveden.\n\n%s", toolSummary), nil
+		
+		if len(toolNames) > 0 {
+			return fmt.Sprintf("✅ Operation completed successfully (%s).", strings.Join(toolNames, ", ")), nil
+		}
+		return "✅ Operation completed successfully.", nil
 	}
 
 	c.logger.InfoWithComponent("OpenRouterClient", "Successfully received final response after tool execution", 

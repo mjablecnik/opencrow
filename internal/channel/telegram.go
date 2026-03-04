@@ -275,17 +275,86 @@ func (tc *TelegramChannel) escapeMarkdownV2(text string) string {
 }
 
 // SendMessage sends a basic message to a user with HTML formatting
+// Automatically splits messages longer than 4000 characters
 func (tc *TelegramChannel) SendMessage(chatID int64, text string) error {
+	const maxMessageLength = 4000 // Telegram limit is 4096, use 4000 for safety
+	
 	// Convert markdown-like formatting to HTML for Telegram
 	htmlText := tc.markdownToHTML(text)
 	
-	msg := tgbotapi.NewMessage(chatID, htmlText)
-	msg.ParseMode = "HTML"
-	_, err := tc.bot.Send(msg)
-	if err != nil {
-		return fmt.Errorf("failed to send message: %w", err)
+	// If message is short enough, send it directly
+	if len(htmlText) <= maxMessageLength {
+		msg := tgbotapi.NewMessage(chatID, htmlText)
+		msg.ParseMode = "HTML"
+		_, err := tc.bot.Send(msg)
+		if err != nil {
+			return fmt.Errorf("failed to send message: %w", err)
+		}
+		return nil
 	}
+	
+	// Message is too long, split it into chunks
+	tc.logger.WarnWithComponent("TelegramChannel", "Message too long, splitting into chunks", 
+		"chatID", chatID, 
+		"length", len(htmlText))
+	
+	chunks := tc.splitMessage(htmlText, maxMessageLength)
+	
+	for i, chunk := range chunks {
+		msg := tgbotapi.NewMessage(chatID, chunk)
+		msg.ParseMode = "HTML"
+		_, err := tc.bot.Send(msg)
+		if err != nil {
+			return fmt.Errorf("failed to send message chunk %d/%d: %w", i+1, len(chunks), err)
+		}
+		
+		// Small delay between chunks to avoid rate limiting
+		if i < len(chunks)-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	
+	tc.logger.InfoWithComponent("TelegramChannel", "Long message sent in chunks", 
+		"chatID", chatID, 
+		"chunks", len(chunks))
+	
 	return nil
+}
+
+// splitMessage splits a long message into chunks at natural break points
+func (tc *TelegramChannel) splitMessage(text string, maxLength int) []string {
+	if len(text) <= maxLength {
+		return []string{text}
+	}
+	
+	var chunks []string
+	remaining := text
+	
+	for len(remaining) > 0 {
+		if len(remaining) <= maxLength {
+			chunks = append(chunks, remaining)
+			break
+		}
+		
+		// Find a good break point (newline, space, or punctuation)
+		breakPoint := maxLength
+		
+		// Try to break at newline
+		if idx := strings.LastIndex(remaining[:maxLength], "\n"); idx > maxLength/2 {
+			breakPoint = idx + 1
+		} else if idx := strings.LastIndex(remaining[:maxLength], ". "); idx > maxLength/2 {
+			// Try to break at sentence end
+			breakPoint = idx + 2
+		} else if idx := strings.LastIndex(remaining[:maxLength], " "); idx > maxLength/2 {
+			// Try to break at word boundary
+			breakPoint = idx + 1
+		}
+		
+		chunks = append(chunks, remaining[:breakPoint])
+		remaining = remaining[breakPoint:]
+	}
+	
+	return chunks
 }
 
 // markdownToHTML converts markdown formatting to Telegram HTML
