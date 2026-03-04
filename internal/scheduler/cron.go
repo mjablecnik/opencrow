@@ -213,6 +213,12 @@ func (s *CronScheduler) Start() error {
 		s.logger.Printf("Scheduled job: %s (schedule: %s, type: %s)", name, job.Schedule, job.TaskType)
 	}
 
+	// Save jobs with updated next_run times
+	if err := s.saveJobsInternal(); err != nil {
+		s.logger.Printf("Warning: Failed to save jobs after scheduling: %v", err)
+		// Continue anyway - this is not critical for startup
+	}
+
 	// Start the cron scheduler
 	s.cron.Start()
 	s.logger.Println("Cron scheduler started successfully")
@@ -1013,6 +1019,30 @@ func (s *CronScheduler) AddReminderJob(name, schedule, message string, chatID in
 
 	s.jobs[name] = job
 
+	// Schedule the job immediately
+	shouldSchedule := true
+	
+	// Check if job has a starts_at time and hasn't started yet
+	if startsAt != nil && time.Now().Before(*startsAt) {
+		s.logger.Printf("Job %s not yet started (starts at %s), will not schedule immediately", name, startsAt.Format(time.RFC3339))
+		shouldSchedule = false
+	}
+	
+	// Check if job is expired
+	if expiresAt != nil && time.Now().After(*expiresAt) {
+		s.logger.Printf("Job %s has expired, will not schedule", name)
+		shouldSchedule = false
+	}
+	
+	if shouldSchedule {
+		if err := s.scheduleJob(name, job); err != nil {
+			s.logger.Printf("Warning: Failed to schedule job immediately: %v", err)
+			// Continue anyway - job will be scheduled on next restart
+		} else {
+			s.logger.Printf("Job %s scheduled immediately with schedule: %s", name, schedule)
+		}
+	}
+
 	// Save jobs
 	if err := s.saveJobsInternal(); err != nil {
 		return fmt.Errorf("failed to save jobs: %w", err)
@@ -1051,6 +1081,18 @@ func (s *CronScheduler) AddOneTimeReminderJob(name, schedule string, executeAt t
 	}
 
 	s.jobs[name] = job
+
+	// Schedule the job immediately if it hasn't passed yet
+	if time.Now().Before(executeAt) {
+		if err := s.scheduleJob(name, job); err != nil {
+			s.logger.Printf("Warning: Failed to schedule job immediately: %v", err)
+			// Continue anyway - job will be scheduled on next restart
+		} else {
+			s.logger.Printf("Job %s scheduled immediately for execution at %s", name, executeAt.Format(time.RFC3339))
+		}
+	} else {
+		s.logger.Printf("Job %s has past execution time, will not be scheduled", name)
+	}
 
 	// Save jobs
 	if err := s.saveJobsInternal(); err != nil {
