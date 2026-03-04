@@ -5,7 +5,9 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,10 +23,14 @@ const (
 
 // Logger provides structured logging with configurable log levels
 type Logger struct {
-	level     LogLevel
-	logger    *log.Logger
-	logFile   *os.File
-	logToFile bool
+	level         LogLevel
+	logger        *log.Logger
+	logFile       *os.File
+	logToFile     bool
+	logDir        string
+	currentDate   string
+	maxAgeDays    int
+	mu            sync.Mutex
 }
 
 // NewLogger creates a new logger with the specified log level
@@ -38,28 +44,140 @@ func NewLogger(levelStr string) *Logger {
 }
 
 // NewLoggerWithFile creates a new logger that writes to both stdout and a file
-func NewLoggerWithFile(levelStr string, logFilePath string) (*Logger, error) {
+// with automatic daily rotation and cleanup of old log files
+func NewLoggerWithFile(levelStr string, logDir string, maxAgeDays int) (*Logger, error) {
 	level := parseLogLevel(levelStr)
 	
-	// Create log file
-	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open log file: %w", err)
+	// Create log directory if it doesn't exist
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
+	
+	l := &Logger{
+		level:      level,
+		logToFile:  true,
+		logDir:     logDir,
+		maxAgeDays: maxAgeDays,
+	}
+	
+	// Open initial log file
+	if err := l.rotateLogFile(); err != nil {
+		return nil, err
+	}
+	
+	// Start background goroutine for daily rotation and cleanup
+	go l.dailyRotationWorker()
+	
+	return l, nil
+}
+
+// rotateLogFile closes the current log file and opens a new one for today
+func (l *Logger) rotateLogFile() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	
+	// Get current date
+	currentDate := time.Now().Format("2006-01-02")
+	
+	// If already on the correct date, do nothing
+	if l.currentDate == currentDate && l.logFile != nil {
+		return nil
+	}
+	
+	// Close old log file if open
+	if l.logFile != nil {
+		l.logFile.Close()
+	}
+	
+	// Open new log file
+	logFileName := filepath.Join(l.logDir, fmt.Sprintf("bot-%s.log", currentDate))
+	logFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open log file: %w", err)
+	}
+	
+	l.logFile = logFile
+	l.currentDate = currentDate
 	
 	// Create multi-writer for both stdout and file
 	multiWriter := io.MultiWriter(os.Stdout, logFile)
+	l.logger = log.New(multiWriter, "", 0)
 	
-	return &Logger{
-		level:     level,
-		logger:    log.New(multiWriter, "", 0),
-		logFile:   logFile,
-		logToFile: true,
-	}, nil
+	return nil
+}
+
+// dailyRotationWorker runs in background and rotates log file at midnight
+func (l *Logger) dailyRotationWorker() {
+	for {
+		// Calculate time until next midnight
+		now := time.Now()
+		tomorrow := now.Add(24 * time.Hour)
+		nextMidnight := time.Date(tomorrow.Year(), tomorrow.Month(), tomorrow.Day(), 0, 0, 0, 0, now.Location())
+		timeUntilMidnight := nextMidnight.Sub(now)
+		
+		// Wait until midnight
+		time.Sleep(timeUntilMidnight)
+		
+		// Rotate log file
+		if err := l.rotateLogFile(); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to rotate log file: %v\n", err)
+		}
+		
+		// Clean up old log files
+		if err := l.cleanupOldLogs(); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to cleanup old logs: %v\n", err)
+		}
+	}
+}
+
+// cleanupOldLogs removes log files older than maxAgeDays
+func (l *Logger) cleanupOldLogs() error {
+	if l.maxAgeDays <= 0 {
+		return nil // Cleanup disabled
+	}
+	
+	entries, err := os.ReadDir(l.logDir)
+	if err != nil {
+		return fmt.Errorf("failed to read log directory: %w", err)
+	}
+	
+	cutoffDate := time.Now().AddDate(0, 0, -l.maxAgeDays)
+	
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		
+		// Check if it's a bot log file
+		if !strings.HasPrefix(entry.Name(), "bot-") || !strings.HasSuffix(entry.Name(), ".log") {
+			continue
+		}
+		
+		// Get file info
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		
+		// Check if file is older than cutoff date
+		if info.ModTime().Before(cutoffDate) {
+			logPath := filepath.Join(l.logDir, entry.Name())
+			if err := os.Remove(logPath); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to remove old log file %s: %v\n", entry.Name(), err)
+			} else {
+				fmt.Fprintf(os.Stdout, "Removed old log file: %s\n", entry.Name())
+			}
+		}
+	}
+	
+	return nil
 }
 
 // Close closes the log file if it's open
 func (l *Logger) Close() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	
 	if l.logToFile && l.logFile != nil {
 		return l.logFile.Close()
 	}
