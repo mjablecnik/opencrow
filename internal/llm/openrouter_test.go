@@ -254,8 +254,8 @@ func TestExtractGeneratedText(t *testing.T) {
 					},
 				},
 			},
-			expected:    "",
-			shouldError: true,
+			expected:    "I executed the command, but it returned no output. This could mean the data wasn't found or the command needs adjustment.",
+			shouldError: false,
 		},
 	}
 	

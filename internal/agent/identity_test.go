@@ -12,7 +12,7 @@ func TestValidateIdentityFiles_AllFilesExist(t *testing.T) {
 	// Create temporary directory with all identity files
 	tmpDir := t.TempDir()
 	
-	files := []string{"IDENTITY.md", "PERSONALITY.md", "SOUL.md", "USER.md"}
+	files := []string{"IDENTITY.md", "PERSONALITY.md", "SOUL.md", "USER.md", "TOOLS.md"}
 	for _, file := range files {
 		path := filepath.Join(tmpDir, file)
 		if err := os.WriteFile(path, []byte("test content"), 0644); err != nil {
@@ -60,6 +60,7 @@ func TestLoadIdentityFiles_Success(t *testing.T) {
 		"PERSONALITY.md": "Personality content",
 		"SOUL.md":        "Soul content",
 		"USER.md":        "User content",
+		"TOOLS.md":       "Tools content",
 	}
 
 	for file, content := range testContent {
@@ -88,6 +89,9 @@ func TestLoadIdentityFiles_Success(t *testing.T) {
 	}
 	if files.User != testContent["USER.md"] {
 		t.Errorf("User content mismatch: got %q, want %q", files.User, testContent["USER.md"])
+	}
+	if files.Tools != testContent["TOOLS.md"] {
+		t.Errorf("Tools content mismatch: got %q, want %q", files.Tools, testContent["TOOLS.md"])
 	}
 }
 
@@ -119,6 +123,7 @@ func TestGetIdentityContext(t *testing.T) {
 		"PERSONALITY.md": "Personality content",
 		"SOUL.md":        "Soul content",
 		"USER.md":        "User content",
+		"TOOLS.md":       "Tools content",
 	}
 
 	for file, content := range testContent {
@@ -152,6 +157,9 @@ func TestGetIdentityContext(t *testing.T) {
 	if context.User != testContent["USER.md"] {
 		t.Errorf("User context mismatch: got %q, want %q", context.User, testContent["USER.md"])
 	}
+	if context.Tools != testContent["TOOLS.md"] {
+		t.Errorf("Tools context mismatch: got %q, want %q", context.Tools, testContent["TOOLS.md"])
+	}
 }
 
 func TestGetIdentityContext_BeforeLoad(t *testing.T) {
@@ -163,7 +171,7 @@ func TestGetIdentityContext_BeforeLoad(t *testing.T) {
 	context := agent.GetIdentityContext()
 
 	// Should return empty context
-	if context.Identity != "" || context.Personality != "" || context.Soul != "" || context.User != "" {
+	if context.Identity != "" || context.Personality != "" || context.Soul != "" || context.User != "" || context.Tools != "" {
 		t.Error("GetIdentityContext() should return empty context when called before LoadIdentityFiles()")
 	}
 }

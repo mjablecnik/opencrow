@@ -8,6 +8,21 @@ import (
 	"time"
 )
 
+// MockMemorySessionManager implements MemorySessionManager for testing
+type MockMemorySessionManager struct {
+	performScheduledResetCalled bool
+	performScheduledResetError  error
+	dateToReturn                string
+}
+
+func (m *MockMemorySessionManager) PerformScheduledSessionReset() (string, error) {
+	m.performScheduledResetCalled = true
+	if m.performScheduledResetError != nil {
+		return "", m.performScheduledResetError
+	}
+	return m.dateToReturn, nil
+}
+
 func TestExecuteDailyMaintenanceCascade_BasicFlow(t *testing.T) {
 	// Create temporary directory for test
 	tempDir := t.TempDir()
@@ -16,6 +31,12 @@ func TestExecuteDailyMaintenanceCascade_BasicFlow(t *testing.T) {
 	// Create scheduler
 	logger := log.New(os.Stdout, "[TEST] ", log.LstdFlags)
 	scheduler := NewCronScheduler(configPath, logger)
+
+	// Configure mock session manager
+	mockSessionManager := &MockMemorySessionManager{
+		dateToReturn: "2024-03-04",
+	}
+	scheduler.SetMemorySessionManager(mockSessionManager)
 
 	// Execute cascade
 	err := scheduler.ExecuteDailyMaintenanceCascade()
@@ -74,6 +95,12 @@ func TestExecuteDailyMaintenanceCascade_MondayFlow(t *testing.T) {
 	// Create scheduler
 	logger := log.New(os.Stdout, "[TEST] ", log.LstdFlags)
 	scheduler := NewCronScheduler(configPath, logger)
+
+	// Configure mock session manager
+	mockSessionManager := &MockMemorySessionManager{
+		dateToReturn: "2024-03-04",
+	}
+	scheduler.SetMemorySessionManager(mockSessionManager)
 
 	// Mock the day check to simulate Monday
 	// Note: This test will only verify weekly ops if run on Monday
@@ -168,6 +195,12 @@ func TestCascadeOperationSequencing(t *testing.T) {
 	configPath := filepath.Join(tempDir, "cron.json")
 	logger := log.New(os.Stdout, "[TEST] ", log.LstdFlags)
 	scheduler := NewCronScheduler(configPath, logger)
+
+	// Configure mock session manager
+	mockSessionManager := &MockMemorySessionManager{
+		dateToReturn: "2024-03-04",
+	}
+	scheduler.SetMemorySessionManager(mockSessionManager)
 
 	// Execute cascade
 	err := scheduler.ExecuteDailyMaintenanceCascade()
