@@ -17,6 +17,7 @@ type Config struct {
 	ModelName    string
 	ShellTimeout time.Duration
 	LogLevel     string
+	StartTime    time.Time // Application start time for log file naming
 
 	// Memory and scheduling configuration
 	Memory MemoryConfig
@@ -36,7 +37,9 @@ type MemoryConfig struct {
 
 // Load reads configuration from environment variables
 func Load() (*Config, error) {
-	cfg := &Config{}
+	cfg := &Config{
+		StartTime: time.Now(), // Set start time for log file naming
+	}
 
 	// Required: Telegram bot token
 	cfg.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")

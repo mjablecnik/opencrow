@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
@@ -20,17 +21,49 @@ const (
 
 // Logger provides structured logging with configurable log levels
 type Logger struct {
-	level  LogLevel
-	logger *log.Logger
+	level     LogLevel
+	logger    *log.Logger
+	logFile   *os.File
+	logToFile bool
 }
 
 // NewLogger creates a new logger with the specified log level
 func NewLogger(levelStr string) *Logger {
 	level := parseLogLevel(levelStr)
 	return &Logger{
-		level:  level,
-		logger: log.New(os.Stdout, "", 0),
+		level:     level,
+		logger:    log.New(os.Stdout, "", 0),
+		logToFile: false,
 	}
+}
+
+// NewLoggerWithFile creates a new logger that writes to both stdout and a file
+func NewLoggerWithFile(levelStr string, logFilePath string) (*Logger, error) {
+	level := parseLogLevel(levelStr)
+	
+	// Create log file
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open log file: %w", err)
+	}
+	
+	// Create multi-writer for both stdout and file
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
+	
+	return &Logger{
+		level:     level,
+		logger:    log.New(multiWriter, "", 0),
+		logFile:   logFile,
+		logToFile: true,
+	}, nil
+}
+
+// Close closes the log file if it's open
+func (l *Logger) Close() error {
+	if l.logToFile && l.logFile != nil {
+		return l.logFile.Close()
+	}
+	return nil
 }
 
 // parseLogLevel converts a string log level to LogLevel
