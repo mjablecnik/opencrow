@@ -22,10 +22,7 @@ services:
       - NOTES_SCRATCHPAD_MAX_AGE_DAYS=${NOTES_SCRATCHPAD_MAX_AGE_DAYS:-7}
       - DAILY_MAINTENANCE_TIME=${DAILY_MAINTENANCE_TIME:-0 4 * * *}
     volumes:
-      - ./agent:/app/agent:ro
-      - ./logs:/app/logs
-      - ./memory:/app/memory
-      - ./config:/app/config
+      - ./workplace:/app/workplace
     logging:
       driver: "json-file"
       options:

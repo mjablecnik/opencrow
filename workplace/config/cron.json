@@ -1,0 +1,102 @@
+{
+  "version": "1.0",
+  "jobs": [
+    {
+      "name": "email_designerce_10",
+      "schedule": "0 10 4 3 *",
+      "execute_at": "2026-03-04T10:00:00Z",
+      "task_type": "reminder",
+      "enabled": true,
+      "status": "enabled",
+      "last_run": "0001-01-01T00:00:00Z",
+      "next_run": "2026-03-04T10:00:00Z",
+      "message": "Napiš email designerce!",
+      "chat_id": 1100684093,
+      "description": "One-time reminder: Napiš email designerce!"
+    },
+    {
+      "name": "email_designerce_11",
+      "schedule": "0 11 4 3 *",
+      "execute_at": "2026-03-04T11:00:00Z",
+      "task_type": "reminder",
+      "enabled": true,
+      "status": "enabled",
+      "last_run": "0001-01-01T00:00:00Z",
+      "next_run": "2026-03-04T11:00:00Z",
+      "message": "Napiš email designerce! (Druhé připomenutí)",
+      "chat_id": 1100684093,
+      "description": "One-time reminder: Napiš email designerce! (Druhé připomenutí)"
+    },
+    {
+      "name": "daily_review_23h",
+      "schedule": "0 23 * * *",
+      "task_type": "reminder",
+      "enabled": true,
+      "status": "success",
+      "last_run": "2026-03-03T23:00:00.985481431Z",
+      "next_run": "0001-01-01T00:00:00Z",
+      "message": "Ahoj! Je 23:00, co jsi dělal dnes večer? Pojďme to dopsat do tvého denního logu.",
+      "chat_id": 1100684093,
+      "description": "Recurring reminder: Ahoj! Je 23:00, co jsi dělal dnes večer? Pojďme to dopsat do tvého denního logu."
+    },
+    {
+      "name": "depakine_reminder_combined",
+      "schedule": "0 13-23 * * *",
+      "task_type": "reminder",
+      "enabled": true,
+      "status": "success",
+      "last_run": "2026-03-03T23:00:00.985453336Z",
+      "next_run": "0001-01-01T00:00:00Z",
+      "message": "Nezapomeň si vzít Depakine! (Hodinové připomenutí 13:00 - 23:00)",
+      "chat_id": 1100684093,
+      "description": "Recurring reminder: Nezapomeň si vzít Depakine! (Hodinové připomenutí 13:00 - 23:00)"
+    },
+    {
+      "name": "horcik_denne_1645",
+      "schedule": "45 16 * * *",
+      "task_type": "reminder",
+      "enabled": true,
+      "status": "enabled",
+      "last_run": "0001-01-01T00:00:00Z",
+      "next_run": "0001-01-01T00:00:00Z",
+      "message": "Čas na hořčík! Nezapomeň si ho vzít.",
+      "chat_id": 1100684093,
+      "description": "Recurring reminder: Čas na hořčík! Nezapomeň si ho vzít."
+    },
+    {
+      "name": "daily_review_17h",
+      "schedule": "0 17 * * *",
+      "task_type": "reminder",
+      "enabled": true,
+      "status": "enabled",
+      "last_run": "0001-01-01T00:00:00Z",
+      "next_run": "0001-01-01T00:00:00Z",
+      "message": "Ahoj! Je 17:00, pojďme si zapsat, co se ti dnes podařilo udělat.",
+      "chat_id": 1100684093,
+      "description": "Recurring reminder: Ahoj! Je 17:00, pojďme si zapsat, co se ti dnes podařilo udělat."
+    },
+    {
+      "name": "vzbuzeni_rano_0800",
+      "schedule": "0 8 4 3 *",
+      "execute_at": "2026-03-04T08:00:00Z",
+      "task_type": "reminder",
+      "enabled": true,
+      "status": "enabled",
+      "last_run": "0001-01-01T00:00:00Z",
+      "next_run": "0001-01-01T00:00:00Z",
+      "message": "Dobré ráno! Je 8:00, čas vstávat.",
+      "chat_id": 1100684093,
+      "description": "One-time reminder: Dobré ráno! Je 8:00, čas vstávat."
+    },
+    {
+      "name": "daily_maintenance_cascade",
+      "schedule": "0 4 * * *",
+      "task_type": "maintenance_cascade",
+      "enabled": true,
+      "status": "enabled",
+      "last_run": "0001-01-01T00:00:00Z",
+      "next_run": "0001-01-01T00:00:00Z",
+      "description": "Execute daily maintenance cascade: summary, topic extraction, notes cleanup, weekly/quarterly ops (if applicable), session reset"
+    }
+  ]
+}

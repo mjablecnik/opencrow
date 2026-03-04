@@ -1,0 +1,6 @@
+# This directory contains runtime data for the OpenCrow bot
+# Structure:
+# - agent/   - Bot identity and personality configuration
+# - config/  - Runtime configuration (cron jobs, settings)
+# - memory/  - Conversation memory and topics
+# - logs/    - Application logs

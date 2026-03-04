@@ -1,0 +1,77 @@
+{
+  "version": "1.0",
+  "max_entries": 1000,
+  "entries": [
+    {
+      "timestamp": "2026-03-03T20:00:03.257253921Z",
+      "job_name": "depakine_hourly_check",
+      "task_type": "",
+      "status": "failed",
+      "error": "unknown task type: "
+    },
+    {
+      "timestamp": "2026-03-03T20:28:38.027179385Z",
+      "job_name": "depakine_daily_start",
+      "task_type": "reminder",
+      "status": "deleted",
+      "deleted": true,
+      "deletion_reason": "manual_deletion"
+    },
+    {
+      "timestamp": "2026-03-03T20:28:38.034126911Z",
+      "job_name": "depakine_hourly_check",
+      "task_type": "reminder",
+      "status": "deleted",
+      "deleted": true,
+      "deletion_reason": "manual_deletion"
+    },
+    {
+      "timestamp": "2026-03-03T21:00:01.799043484Z",
+      "job_name": "depakine_reminder_combined",
+      "task_type": "reminder",
+      "status": "success",
+      "message_sent": "Nezapomeň si vzít Depakine! (Hodinové připomenutí 13:00 - 23:00)",
+      "chat_id": 1100684093
+    },
+    {
+      "timestamp": "2026-03-03T22:55:02.776896442Z",
+      "job_name": "magnesium_daily_1645",
+      "task_type": "reminder",
+      "status": "deleted",
+      "deleted": true,
+      "deletion_reason": "manual_deletion"
+    },
+    {
+      "timestamp": "2026-03-03T22:55:02.784559031Z",
+      "job_name": "email_designer_1000",
+      "task_type": "reminder",
+      "status": "deleted",
+      "deleted": true,
+      "deletion_reason": "manual_deletion"
+    },
+    {
+      "timestamp": "2026-03-03T22:55:02.788350935Z",
+      "job_name": "email_designer_1100",
+      "task_type": "reminder",
+      "status": "deleted",
+      "deleted": true,
+      "deletion_reason": "manual_deletion"
+    },
+    {
+      "timestamp": "2026-03-03T23:00:01.063651754Z",
+      "job_name": "daily_review_23h",
+      "task_type": "reminder",
+      "status": "success",
+      "message_sent": "Ahoj! Je 23:00, co jsi dělal dnes večer? Pojďme to dopsat do tvého denního logu.",
+      "chat_id": 1100684093
+    },
+    {
+      "timestamp": "2026-03-03T23:00:01.091247529Z",
+      "job_name": "depakine_reminder_combined",
+      "task_type": "reminder",
+      "status": "success",
+      "message_sent": "Nezapomeň si vzít Depakine! (Hodinové připomenutí 13:00 - 23:00)",
+      "chat_id": 1100684093
+    }
+  ]
+}

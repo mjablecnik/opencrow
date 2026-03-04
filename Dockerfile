@@ -40,15 +40,15 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /build/bot /app/bot
 
-# Create directories for volumes
-RUN mkdir -p /app/agent /app/logs /app/memory /app/config && \
+# Create directory for volume
+RUN mkdir -p /app/workplace && \
     chown -R botuser:botuser /app
 
 # Switch to non-root user
 USER botuser
 
-# Define volume mount points
-VOLUME ["/app/agent", "/app/logs", "/app/memory", "/app/config"]
+# Define volume mount point
+VOLUME ["/app/workplace"]
 
 # Environment variables (configurable at runtime)
 ENV TELEGRAM_BOT_TOKEN="" \
