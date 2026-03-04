@@ -218,6 +218,13 @@ func (c *OpenRouterClient) AssembleContext(chatID int64, userMessage string) ([]
 func (c *OpenRouterClient) buildSystemContext(identityContext agent.IdentityContext) string {
 	var systemContext string
 	
+	// Add current timestamp at the beginning
+	now := time.Now()
+	systemContext += fmt.Sprintf("# Current Time\n\n**Current Date and Time:** %s\n**Day of Week:** %s\n**Timezone:** %s\n\n",
+		now.Format("2006-01-02 15:04:05"),
+		now.Format("Monday"),
+		now.Format("MST"))
+	
 	if identityContext.Identity != "" {
 		systemContext += "# Identity\n\n" + identityContext.Identity + "\n\n"
 	}
