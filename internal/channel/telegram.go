@@ -288,22 +288,108 @@ func (tc *TelegramChannel) SendMessage(chatID int64, text string) error {
 	return nil
 }
 
-// markdownToHTML converts simple markdown formatting to Telegram HTML
+// markdownToHTML converts markdown formatting to Telegram HTML
 func (tc *TelegramChannel) markdownToHTML(text string) string {
-	// Simple conversion of common markdown patterns to HTML
-	// Bold: **text** or __text__ -> <b>text</b>
-	// Italic: *text* or _text_ -> <i>text</i>
-	// Code: `text` -> <code>text</code>
-	// This is a basic implementation - for production, consider using a proper markdown parser
+	var result strings.Builder
+	result.Grow(len(text))
 	
-	result := text
+	i := 0
+	for i < len(text) {
+		// Check for code blocks (```...```)
+		if i+2 < len(text) && text[i:i+3] == "```" {
+			// Find closing ```
+			end := strings.Index(text[i+3:], "```")
+			if end != -1 {
+				end += i + 3
+				// Extract code content
+				codeContent := text[i+3 : end]
+				result.WriteString("<pre>")
+				result.WriteString(tc.escapeHTML(codeContent))
+				result.WriteString("</pre>")
+				i = end + 3
+				continue
+			}
+		}
+		
+		// Check for inline code (`...`)
+		if text[i] == '`' {
+			end := strings.IndexByte(text[i+1:], '`')
+			if end != -1 && end > 0 {
+				end += i + 1
+				codeContent := text[i+1 : end]
+				result.WriteString("<code>")
+				result.WriteString(tc.escapeHTML(codeContent))
+				result.WriteString("</code>")
+				i = end + 1
+				continue
+			}
+		}
+		
+		// Check for bold (**text**)
+		if i+1 < len(text) && text[i:i+2] == "**" {
+			end := strings.Index(text[i+2:], "**")
+			if end != -1 && end > 0 {
+				end += i + 2
+				boldContent := text[i+2 : end]
+				result.WriteString("<b>")
+				result.WriteString(tc.escapeHTML(boldContent))
+				result.WriteString("</b>")
+				i = end + 2
+				continue
+			}
+		}
+		
+		// Check for italic (*text*)
+		if text[i] == '*' {
+			end := strings.IndexByte(text[i+1:], '*')
+			if end != -1 && end > 0 {
+				end += i + 1
+				italicContent := text[i+1 : end]
+				result.WriteString("<i>")
+				result.WriteString(tc.escapeHTML(italicContent))
+				result.WriteString("</i>")
+				i = end + 1
+				continue
+			}
+		}
+		
+		// Check for underline (__text__)
+		if i+1 < len(text) && text[i:i+2] == "__" {
+			end := strings.Index(text[i+2:], "__")
+			if end != -1 && end > 0 {
+				end += i + 2
+				underlineContent := text[i+2 : end]
+				result.WriteString("<u>")
+				result.WriteString(tc.escapeHTML(underlineContent))
+				result.WriteString("</u>")
+				i = end + 2
+				continue
+			}
+		}
+		
+		// Regular character - escape HTML special chars
+		char := text[i]
+		switch char {
+		case '<':
+			result.WriteString("&lt;")
+		case '>':
+			result.WriteString("&gt;")
+		case '&':
+			result.WriteString("&amp;")
+		default:
+			result.WriteByte(char)
+		}
+		i++
+	}
 	
-	// Convert **bold** to <b>bold</b>
-	result = strings.ReplaceAll(result, "**", "<b>")
-	// Note: This is overly simplistic and will break with nested formatting
-	// A proper implementation would use a state machine or regex
-	
-	// For now, just return the text as-is and let the LLM generate HTML directly
+	return result.String()
+}
+
+// escapeHTML escapes HTML special characters
+func (tc *TelegramChannel) escapeHTML(text string) string {
+	text = strings.ReplaceAll(text, "&", "&amp;")
+	text = strings.ReplaceAll(text, "<", "&lt;")
+	text = strings.ReplaceAll(text, ">", "&gt;")
 	return text
 }
 
